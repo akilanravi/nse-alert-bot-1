@@ -1,0 +1,27 @@
+name: 5M Telegram Alert Scanner
+
+on:
+  schedule:
+    # Runs Monday to Friday during Indian Market hours (3:45 AM - 10:00 AM UTC = 9:15 AM - 3:30 PM IST)
+    - cron: '*/5 3-10 * * 1-5'
+  workflow_dispatch: # Allows you to click a button and test it anytime
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Libraries
+        run: |
+          pip install yfinance pandas numpy requests
+
+      - name: Run Alert Check
+        run: |
+          python bot.py
