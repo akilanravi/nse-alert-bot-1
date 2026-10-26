@@ -1,97 +1,35 @@
-import datetime
-import time
+import numpy as np
 import pandas as pd
-import pandas_ta as ta
 import requests
 import yfinance as yf
 
 # =====================================================================
 # 1. TELEGRAM CONFIGURATION
 # =====================================================================
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # From @BotFather
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID_HERE"  # From @userinfobot
+TELEGRAM_BOT_TOKEN = "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k"
+TELEGRAM_CHAT_ID = "846124589"
 
 # =====================================================================
-# 2. AUTO-POPULATED WATCHLIST (INDICES + ENTIRE NIFTY 50)
+# 2. WATCHLIST (INDICES + TOP HIGH-BETA NIFTY DRIVERS)
 # =====================================================================
-# Major benchmark indices
-BENCHMARKS = ["^NSEI", "^NSEBANK", "^BSESN"]
-
-# Official Nifty 50 constituent symbols (auto-appended with .NS)
-NIFTY_50_STOCKS = [
-    "ADANIENT",
-    "ADANIPORTS",
-    "APOLLOHOSP",
-    "ASIANPAINT",
-    "AXISBANK",
-    "BAJAJ-AUTO",
-    "BAJFINANCE",
-    "BAJAJFINSV",
-    "BPCL",
-    "BHARTIARTL",
-    "BRITANNIA",
-    "CIPLA",
-    "COALINDIA",
-    "DRREDDY",
-    "EICHERMOT",
-    "GRASIM",
-    "HCLTECH",
-    "HDFCBANK",
-    "HDFCLIFE",
-    "HEROMOTOCO",
-    "HINDALCO",
-    "HINDUNILVR",
-    "ICICIBANK",
-    "ITC",
-    "INDUSINDBK",
-    "INFY",
-    "JSWSTEEL",
-    "KOTAKBANK",
-    "LT",
-    "M&M",
-    "MARUTI",
-    "NTPC",
-    "NESTLEIND",
-    "ONGC",
-    "POWERGRID",
-    "RELIANCE",
-    "SBILIFE",
-    "SHRIRAMFIN",
-    "SBIN",
-    "SUNPHARMA",
-    "TCS",
-    "TATACONSUM",
-    "TATAMOTORS",
-    "TATASTEEL",
-    "TECHM",
-    "TITAN",
-    "ULTRACEMCO",
-    "WIPRO",
-    "SIEMENS",
-    "TRENT",
+WATCHLIST = [
+    "^NSEI",
+    "^NSEBANK",
+    "^BSESN",
+    "RELIANCE.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "TATAMOTORS.NS",
+    "SBIN.NS",
+    "INFY.NS",
+    "TCS.NS",
+    "LT.NS",
+    "AXISBANK.NS",
+    "BAJFINANCE.NS",
 ]
 
 
-def load_full_watchlist():
-  """Combines major indices with the full Nifty 50 constituents."""
-  basket = list(BENCHMARKS)
-  for sym in NIFTY_50_STOCKS:
-    formatted_sym = f"{sym}.NS"
-    if formatted_sym not in basket:
-      basket.append(formatted_sym)
-  return basket
-
-
-WATCHLIST = load_full_watchlist()
-TIMEFRAME = "5m"
-SCAN_INTERVAL_SECONDS = 60  # Evaluates bars every 60s
-
-# State memory to track active positions and entry prices
-positions = {ticker: {"in_trade": False, "entry_price": 0.0} for ticker in WATCHLIST}
-
-
-def send_telegram(text: str):
-  """Sends formatted alerts directly to Telegram."""
+def send_telegram(text):
   url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
   payload = {
       "chat_id": TELEGRAM_CHAT_ID,
@@ -104,153 +42,142 @@ def send_telegram(text: str):
     print(f"Telegram error: {e}")
 
 
-def calculate_daily_pivots(ticker: str):
-  """Calculates prior day's classic Pivot Point (P) and Pivot Low (S1)."""
-  try:
-    df_daily = yf.download(ticker, period="5d", interval="1d", progress=False)
-    if len(df_daily) < 2:
-      return None, None
-    if isinstance(df_daily.columns, pd.MultiIndex):
-      df_daily.columns = df_daily.columns.get_level_values(0)
+def calculate_rsi(series, period=14):
+  delta = series.diff()
+  gain = delta.where(delta > 0, 0).rolling(window=period).mean()
+  loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+  rs = gain / loss.replace(0, np.nan)
+  return 100 - (100 / (1 + rs))
 
-    prev_day = df_daily.iloc[-2]
-    pivot = float((prev_day["High"] + prev_day["Low"] + prev_day["Close"]) / 3.0)
-    s1_low = float((2.0 * pivot) - prev_day["High"])
-    return pivot, s1_low
+
+def calculate_supertrend(df, period=10, multiplier=3.0):
+  high, low, close = df["High"], df["Low"], df["Close"]
+  tr1 = high - low
+  tr2 = (high - close.shift(1)).abs()
+  tr3 = (low - close.shift(1)).abs()
+  tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+  atr = tr.ewm(alpha=1 / period, adjust=False).mean()
+
+  hl2 = (high + low) / 2.0
+  upper = hl2 + (multiplier * atr)
+  lower = hl2 - (multiplier * atr)
+
+  st = pd.Series(index=df.index, dtype=float)
+  direction = pd.Series(index=df.index, dtype=int)
+
+  for i in range(1, len(df)):
+    curr_c = close.iloc[i]
+    prev_st = (
+        st.iloc[i - 1] if not np.isnan(st.iloc[i - 1]) else upper.iloc[i]
+    )
+    prev_dir = (
+        direction.iloc[i - 1] if not np.isnan(direction.iloc[i - 1]) else 1
+    )
+
+    if prev_dir == 1:
+      if curr_c < lower.iloc[i]:
+        direction.iloc[i] = -1
+        st.iloc[i] = upper.iloc[i]
+      else:
+        direction.iloc[i] = 1
+        st.iloc[i] = max(lower.iloc[i], prev_st)
+    else:
+      if curr_c > upper.iloc[i]:
+        direction.iloc[i] = 1
+        st.iloc[i] = lower.iloc[i]
+      else:
+        direction.iloc[i] = -1
+        st.iloc[i] = min(upper.iloc[i], prev_st)
+
+  return st, direction
+
+
+def get_daily_pivots(ticker):
+  try:
+    df_d = yf.download(ticker, period="5d", interval="1d", progress=False)
+    if len(df_d) < 2:
+      return None, None
+    if isinstance(df_d.columns, pd.MultiIndex):
+      df_d.columns = df_d.columns.get_level_values(0)
+
+    prev = df_d.iloc[-2]
+    h, l, c = float(prev["High"]), float(prev["Low"]), float(prev["Close"])
+    pivot = (h + l + c) / 3.0
+    s1 = (2.0 * pivot) - h
+    return pivot, s1
   except Exception:
     return None, None
 
 
-def scan_engine():
+def run_scan():
+  print("Scanning 5-minute charts...")
   for ticker in WATCHLIST:
     try:
-      # Fetch recent 5m intraday data
-      df = yf.download(ticker, period="3d", interval=TIMEFRAME, progress=False)
+      df = yf.download(ticker, period="3d", interval="5m", progress=False)
       if len(df) < 30:
         continue
-
       if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-      # 1. SuperTrend (10, 3) for Entry
-      st1 = ta.supertrend(
-          df["High"], df["Low"], df["Close"], length=10, multiplier=3.0
-      )
-      st1_col = "SUPERT_10_3.0"
-      st1_dir_col = "SUPERTd_10_3.0"
+      st1_val, st1_dir = calculate_supertrend(df, 10, 3.0)
+      st2_val, st2_dir = calculate_supertrend(df, 7, 2.0)
+      rsi_series = calculate_rsi(df["Close"], 14)
+      pivot, s1 = get_daily_pivots(ticker)
 
-      # 2. SuperTrend (7, 2) for Exit
-      st2 = ta.supertrend(
-          df["High"], df["Low"], df["Close"], length=7, multiplier=2.0
-      )
-      st2_dir_col = "SUPERTd_7_2.0"
-
-      # 3. RSI 14
-      rsi = ta.rsi(df["Close"], length=14)
-
-      # 4. Daily Pivots
-      pivot, s1_low = calculate_daily_pivots(ticker)
       if pivot is None:
         continue
 
-      # Latest and previous bars
-      curr = df.iloc[-1]
-      prev = df.iloc[-2]
+      curr_close = float(df["Close"].iloc[-1])
+      curr_open = float(df["Open"].iloc[-1])
+      st1_bull = st1_dir.iloc[-1] == 1
+      st2_bear = st2_dir.iloc[-1] == -1 and st2_dir.iloc[-2] == 1
+      rsi_prev = float(rsi_series.iloc[-2])
 
-      curr_close = float(curr["Close"])
-      curr_open = float(curr["Open"])
-      st1_val = float(st1[st1_col].iloc[-1])
-      st1_bullish = st1[st1_dir_col].iloc[-1] == 1
-      st2_bearish_flip = (
-          st2[st2_dir_col].iloc[-1] == -1 and st2[st2_dir_col].iloc[-2] == 1
-      )
-      rsi_prev = float(rsi.iloc[-2])
-
-      pos = positions[ticker]
-      display_name = (
+      name = (
           ticker.replace(".NS", "")
           .replace("^NSEI", "NIFTY 50")
           .replace("^NSEBANK", "BANK NIFTY")
           .replace("^BSESN", "SENSEX")
       )
 
-      # -----------------------------------------------------------------
-      # CALL / LONG ENTRY TRIGGER
-      # -----------------------------------------------------------------
-      is_green_candle = curr_close > curr_open
-      above_st10_3 = curr_close > st1_val and st1_bullish
-      above_pivot = curr_close > pivot
-      rsi_confirmed = rsi_prev > 60.0
-
+      # --- Entry Condition ---
       if (
-          not pos["in_trade"]
-          and above_st10_3
-          and above_pivot
-          and rsi_confirmed
-          and is_green_candle
+          curr_close > float(st1_val.iloc[-1])
+          and st1_bull
+          and curr_close > pivot
+          and rsi_prev > 60.0
+          and curr_close > curr_open
       ):
-        pos["in_trade"] = True
-        pos["entry_price"] = curr_close
-
         msg = (
-            f"🟢 *CALL / LONG ENTRY ALERT*\n\n"
-            f"• *Symbol:* `{display_name}`\n"
+            f"🟢 *CALL / BUY ENTRY ALERT*\n\n"
+            f"• *Symbol:* `{name}`\n"
             f"• *Price:* ₹{curr_close:,.2f}\n"
-            f"• *SuperTrend (10,3):* ₹{st1_val:,.2f}\n"
+            f"• *SuperTrend (10,3):* ₹{float(st1_val.iloc[-1]):,.2f}\n"
             f"• *Daily Pivot:* ₹{pivot:,.2f}\n"
             f"• *Prior RSI:* {rsi_prev:.2f}\n"
-            f"• *Action:* Buy Call / Position in Zerodha"
+            f"• *Action:* Buy Call Option / Cash in Zerodha"
         )
         send_telegram(msg)
 
-      # -----------------------------------------------------------------
-      # EXIT TRIGGER (5% SL OR ST 7,2 FLIP OR S1 PIVOT BREAK)
-      # -----------------------------------------------------------------
-      elif pos["in_trade"]:
-        entry_price = pos["entry_price"]
-        sl_hit = curr_close <= (entry_price * 0.95)
-        pivot_exit = curr_close < s1_low
-
-        exit_triggered = False
-        reason = ""
-
-        if sl_hit:
-          exit_triggered = True
-          reason = "5% Fixed Stop Loss Hit"
-        elif st2_bearish_flip:
-          exit_triggered = True
-          reason = "SuperTrend (7,2) Bearish Reversal"
-        elif pivot_exit:
-          exit_triggered = True
-          reason = "Crossed Below Pivot Low (S1)"
-
-        if exit_triggered:
-          pos["in_trade"] = False
-          pnl_pct = ((curr_close - entry_price) / entry_price) * 100.0
-
-          msg = (
-              f"🔴 *EXIT / SQUARE-OFF ALERT*\n\n"
-              f"• *Symbol:* `{display_name}`\n"
-              f"• *Exit Price:* ₹{curr_close:,.2f}\n"
-              f"• *Entry Price:* ₹{entry_price:,.2f}\n"
-              f"• *PnL:* {pnl_pct:+.2f}%\n"
-              f"• *Reason:* {reason}\n"
-              f"• *Action:* Square off in Zerodha"
-          )
-          send_telegram(msg)
-
-      # Small sleep between requests to avoid rate limits across the full 50+ list
-      time.sleep(0.1)
+      # --- Exit Condition ---
+      elif st2_bear or curr_close < s1:
+        reason = (
+            "ST (7,2) Bearish Reversal"
+            if st2_bear
+            else "Broken Below Pivot Low (S1)"
+        )
+        msg = (
+            f"🔴 *EXIT / SQUARE-OFF ALERT*\n\n"
+            f"• *Symbol:* `{name}`\n"
+            f"• *Exit Price:* ₹{curr_close:,.2f}\n"
+            f"• *Reason:* {reason}\n"
+            f"• *Action:* Square off position in Zerodha"
+        )
+        send_telegram(msg)
 
     except Exception:
       continue
 
 
-# =====================================================================
-# 3. BACKGROUND EXECUTION
-# =====================================================================
 if __name__ == "__main__":
-    send_telegram("⚡ Live Scanner Active...")
-    while True:
-        scan_engine()
-        time.sleep(SCAN_INTERVAL_SECONDS)
+  run_scan()
