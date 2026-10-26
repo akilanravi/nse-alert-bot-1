@@ -250,10 +250,4 @@ def scan_engine():
 # 3. BACKGROUND EXECUTION
 # =====================================================================
 if __name__ == "__main__":
-  send_telegram(
-      f"⚡ *Live Scanner Active*\nMonitoring Nifty 50, Bank Nifty, Sensex &"
-      f" all {len(NIFTY_50_STOCKS)} constituents on 5m timeframe."
-  )
-  while True:
     scan_engine()
-    time.sleep(SCAN_INTERVAL_SECONDS)
