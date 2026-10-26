@@ -250,4 +250,7 @@ def scan_engine():
 # 3. BACKGROUND EXECUTION
 # =====================================================================
 if __name__ == "__main__":
-    scan_engine()
+    send_telegram("⚡ Live Scanner Active...")
+    while True:
+        scan_engine()
+        time.sleep(SCAN_INTERVAL_SECONDS)
