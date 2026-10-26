@@ -9,7 +9,7 @@ import requests
 import yfinance as yf
 
 # =====================================================================
-# 1. DUAL TELEGRAM CONFIGURATION (BROADCASTS TO BOTH)
+# 1. DUAL TELEGRAM RECIPIENTS (BROADCASTS TO BOTH)
 # =====================================================================
 TELEGRAM_RECIPIENTS = [
     {
@@ -23,12 +23,12 @@ TELEGRAM_RECIPIENTS = [
 ]
 
 # =====================================================================
-# 2. WATCHLIST & STRIKE INTERVALS
+# 2. WATCHLIST & STRIKE INTERVALS (INDICES & TOP F&O NAMES)
 # =====================================================================
 STRIKE_STEPS = {
-    "^NSEI": 50,  # Nifty 50
-    "^NSEBANK": 100,  # Bank Nifty
-    "^BSESN": 100,  # Sensex
+    "^NSEI": 50,  # NIFTY 50
+    "^NSEBANK": 100,  # BANK NIFTY
+    "^BSESN": 100,  # SENSEX
     "NIFTY_FIN_SERVICE.NS": 50,  # FinNifty
     "RELIANCE.NS": 20,
     "HDFCBANK.NS": 20,
@@ -51,7 +51,7 @@ STATE_FILE = "trade_state.json"
 
 
 # =====================================================================
-# 3. POSITION STATE MANAGEMENT (PERSISTENCE)
+# 3. POSITION STATE PERSISTENCE
 # =====================================================================
 def load_state():
   if os.path.exists(STATE_FILE):
@@ -63,8 +63,9 @@ def load_state():
   return {
       ticker: {
           "in_trade": False,
+          "trade_type": "",  # "CALL" or "PUT"
           "entry_price": 0.0,
-          "highest_price": 0.0,
+          "extreme_price": 0.0,  # Highest for CALL, Lowest for PUT
           "trailing_sl": 0.0,
           "atm_strike": 0,
           "itm_strike": 0,
@@ -79,7 +80,6 @@ def save_state(state):
 
 
 def send_telegram(text):
-  """Sends alerts to all configured Telegram bots/accounts."""
   for recipient in TELEGRAM_RECIPIENTS:
     url = f"https://api.telegram.org/bot{recipient['token']}/sendMessage"
     payload = {
@@ -105,12 +105,22 @@ def is_market_hours():
   return market_start <= now_ist <= market_end
 
 
-def get_options_strikes(price, step):
-  atm = int(round(price / step) * step)
-  itm = atm - step
-  return atm, itm
+def get_options_strikes(price, step, direction="CALL"):
+  """Calculates ATM and ITM strikes for both CALL and PUT options."""
+  atm = int(round(price / step) * step) if step >= 1 else round(price / step) * step
+  if direction == "CALL":
+    itm = atm - step  # Lower strike is ITM for Call
+  else:
+    itm = atm + step  # Higher strike is ITM for Put
+
+  atm_fmt = int(atm) if isinstance(atm, (int, np.integer)) or atm.is_integer() else f"{atm:.1f}"
+  itm_fmt = int(itm) if isinstance(itm, (int, np.integer)) or itm.is_integer() else f"{itm:.1f}"
+  return atm_fmt, itm_fmt
 
 
+# =====================================================================
+# 4. TECHNICAL INDICATORS
+# =====================================================================
 def calculate_rsi(series, period=14):
   delta = series.diff()
   gain = delta.where(delta > 0, 0).rolling(window=period).mean()
@@ -137,9 +147,7 @@ def calculate_supertrend(df, period=10, multiplier=3.0):
   for i in range(1, len(df)):
     curr_c = close.iloc[i]
     prev_st = st.iloc[i - 1] if not np.isnan(st.iloc[i - 1]) else upper.iloc[i]
-    prev_dir = (
-        direction.iloc[i - 1] if not np.isnan(direction.iloc[i - 1]) else 1
-    )
+    prev_dir = direction.iloc[i - 1] if not np.isnan(direction.iloc[i - 1]) else 1
 
     if prev_dir == 1:
       if curr_c < lower.iloc[i]:
@@ -160,10 +168,11 @@ def calculate_supertrend(df, period=10, multiplier=3.0):
 
 
 def get_daily_pivots(ticker):
+  """Calculates Central Pivot, R1, S1, Upper Mid-Pivot (M3), and Lower Mid-Pivot (M2)."""
   try:
     df_d = yf.download(ticker, period="5d", interval="1d", progress=False)
     if len(df_d) < 2:
-      return None, None, None
+      return None, None, None, None, None
     if isinstance(df_d.columns, pd.MultiIndex):
       df_d.columns = df_d.columns.get_level_values(0)
 
@@ -172,14 +181,15 @@ def get_daily_pivots(ticker):
     pivot = (h + l + c) / 3.0
     r1 = (2.0 * pivot) - l
     s1 = (2.0 * pivot) - h
-    mid_pivot = (pivot + r1) / 2.0
-    return pivot, mid_pivot, s1
+    m3_upper = (pivot + r1) / 2.0  # Upper Mid-Pivot for Calls
+    m2_lower = (pivot + s1) / 2.0  # Lower Mid-Pivot for Puts
+    return pivot, m3_upper, m2_lower, r1, s1
   except Exception:
-    return None, None, None
+    return None, None, None, None, None
 
 
 # =====================================================================
-# 4. SCAN ENGINE WITH 5% TRAILING STOP LOSS
+# 5. SCAN ENGINE (CALL & PUT WITH 5% TRAILING SL)
 # =====================================================================
 def run_scan():
   if not is_market_hours():
@@ -199,22 +209,23 @@ def run_scan():
       st1_val, st1_dir = calculate_supertrend(df, 10, 3.0)
       st2_val, st2_dir = calculate_supertrend(df, 7, 2.0)
       rsi_series = calculate_rsi(df["Close"], 14)
-      pivot, mid_pivot, s1 = get_daily_pivots(ticker)
+      pivot, m3_upper, m2_lower, r1, s1 = get_daily_pivots(ticker)
 
-      if pivot is None or mid_pivot is None:
+      if pivot is None or m3_upper is None or m2_lower is None:
         continue
 
       curr_close = float(df["Close"].iloc[-1])
       curr_high = float(df["High"].iloc[-1])
+      curr_low = float(df["Low"].iloc[-1])
       curr_open = float(df["Open"].iloc[-1])
 
       st1_bull = st1_dir.iloc[-1] == 1
-      st2_bear = st2_dir.iloc[-1] == -1 and st2_dir.iloc[-2] == 1
+      st1_bear = st1_dir.iloc[-1] == -1
+      st2_flipped_bear = st2_dir.iloc[-1] == -1 and st2_dir.iloc[-2] == 1
+      st2_flipped_bull = st2_dir.iloc[-1] == 1 and st2_dir.iloc[-2] == -1
       rsi_prev = float(rsi_series.iloc[-2])
 
       step = STRIKE_STEPS.get(ticker, 50)
-      atm_ce, itm_ce = get_options_strikes(curr_close, step)
-
       name = (
           ticker.replace(".NS", "")
           .replace("^NSEI", "NIFTY 50")
@@ -226,8 +237,9 @@ def run_scan():
           ticker,
           {
               "in_trade": False,
+              "trade_type": "",
               "entry_price": 0.0,
-              "highest_price": 0.0,
+              "extreme_price": 0.0,
               "trailing_sl": 0.0,
               "atm_strike": 0,
               "itm_strike": 0,
@@ -235,83 +247,151 @@ def run_scan():
       )
 
       # -------------------------------------------------------------
-      # SCENARIO A: ACTIVE POSITION MANAGEMENT (CHECK TSL & EXITS)
+      # 1. ACTIVE POSITION MANAGEMENT (CALL OR PUT)
       # -------------------------------------------------------------
       if pos["in_trade"]:
-        if curr_high > pos["highest_price"]:
-          pos["highest_price"] = curr_high
-          new_tsl = curr_high * (1.0 - TRAILING_SL_PCT)
-          if new_tsl > pos["trailing_sl"]:
-            pos["trailing_sl"] = round(new_tsl, 2)
+        trade_type = pos["trade_type"]
 
-        tsl_hit = curr_close <= pos["trailing_sl"]
-        pivot_exit = curr_close < s1
-        exit_triggered = tsl_hit or st2_bear or pivot_exit
+        # --- CALL POSITION TRAILING & EXIT ---
+        if trade_type == "CALL":
+          if curr_high > pos["extreme_price"]:
+            pos["extreme_price"] = curr_high
+            new_tsl = curr_high * (1.0 - TRAILING_SL_PCT)
+            if new_tsl > pos["trailing_sl"]:
+              pos["trailing_sl"] = round(new_tsl, 2)
 
-        if exit_triggered:
-          reason = ""
-          if tsl_hit:
-            reason = f"5% Trailing Stop-Loss Hit (₹{pos['trailing_sl']:,.2f})"
-          elif st2_bear:
-            reason = "SuperTrend (7,2) Bearish Flip"
-          elif pivot_exit:
-            reason = "Broken Below Pivot Low (S1)"
+          tsl_hit = curr_close <= pos["trailing_sl"]
+          pivot_exit = curr_close < s1
+          exit_triggered = tsl_hit or st2_flipped_bear or pivot_exit
 
-          entry_px = pos["entry_price"]
-          pnl_pct = ((curr_close - entry_px) / entry_px) * 100.0
+          if exit_triggered:
+            reason = ""
+            if tsl_hit:
+              reason = f"5% Trailing Stop-Loss Hit (₹{pos['trailing_sl']:,.2f})"
+            elif st2_flipped_bear:
+              reason = "SuperTrend (7,2) Bearish Flip"
+            elif pivot_exit:
+              reason = "Broken Below Pivot Low (S1)"
 
-          msg = (
-              f"🔴 *EXIT / SQUARE-OFF ALERT*\n\n"
-              f"• *Instrument:* `{name}`\n"
-              f"• *Exit Price:* ₹{curr_close:,.2f}\n"
-              f"• *Entry Price:* ₹{entry_px:,.2f}\n"
-              f"• *Highest Peak:* ₹{pos['highest_price']:,.2f}\n"
-              f"• *Final PnL:* {pnl_pct:+.2f}%\n"
-              f"• *Reason:* {reason}\n"
-              f"• *Action:* Square off `{pos.get('itm_strike', itm_ce)} CE` in"
-              " Zerodha Kite"
-          )
-          send_telegram(msg)
+            pnl_pct = ((curr_close - pos["entry_price"]) / pos["entry_price"]) * 100.0
+            msg = (
+                f"🔴 *CALL EXIT / SQUARE-OFF ALERT*\n\n"
+                f"• *Instrument:* `{name}`\n"
+                f"• *Exit Spot:* ₹{curr_close:,.2f}\n"
+                f"• *Entry Spot:* ₹{pos['entry_price']:,.2f}\n"
+                f"• *Highest Peak:* ₹{pos['extreme_price']:,.2f}\n"
+                f"• *Spot PnL:* {pnl_pct:+.2f}%\n"
+                f"• *Reason:* {reason}\n"
+                f"• *Action:* Square off `{pos['itm_strike']} CE` in Zerodha"
+            )
+            send_telegram(msg)
+            pos["in_trade"] = False
 
-          pos["in_trade"] = False
-          pos["entry_price"] = 0.0
-          pos["highest_price"] = 0.0
-          pos["trailing_sl"] = 0.0
+        # --- PUT POSITION TRAILING & EXIT ---
+        elif trade_type == "PUT":
+          if curr_low < pos["extreme_price"]:
+            pos["extreme_price"] = curr_low
+            new_tsl = curr_low * (1.0 + TRAILING_SL_PCT)
+            if new_tsl < pos["trailing_sl"] or pos["trailing_sl"] == 0:
+              pos["trailing_sl"] = round(new_tsl, 2)
+
+          tsl_hit = curr_close >= pos["trailing_sl"]
+          pivot_exit = curr_close > r1
+          exit_triggered = tsl_hit or st2_flipped_bull or pivot_exit
+
+          if exit_triggered:
+            reason = ""
+            if tsl_hit:
+              reason = f"5% Trailing Stop-Loss Hit (₹{pos['trailing_sl']:,.2f})"
+            elif st2_flipped_bull:
+              reason = "SuperTrend (7,2) Bullish Flip"
+            elif pivot_exit:
+              reason = "Broke Above Resistance (R1)"
+
+            pnl_pct = ((pos["entry_price"] - curr_close) / pos["entry_price"]) * 100.0
+            msg = (
+                f"🟢 *PUT EXIT / SQUARE-OFF ALERT*\n\n"
+                f"• *Instrument:* `{name}`\n"
+                f"• *Exit Spot:* ₹{curr_close:,.2f}\n"
+                f"• *Entry Spot:* ₹{pos['entry_price']:,.2f}\n"
+                f"• *Lowest Valley:* ₹{pos['extreme_price']:,.2f}\n"
+                f"• *Spot Gain:* {pnl_pct:+.2f}%\n"
+                f"• *Reason:* {reason}\n"
+                f"• *Action:* Square off `{pos['itm_strike']} PE` in Zerodha"
+            )
+            send_telegram(msg)
+            pos["in_trade"] = False
 
       # -------------------------------------------------------------
-      # SCENARIO B: NEW CALL / BUY ENTRY
+      # 2. NEW ENTRY CHECKS (CALL OR PUT)
       # -------------------------------------------------------------
       else:
+        # A. CALL / BUY ENTRY CRITERIA
         is_green = curr_close > curr_open
-        above_st = curr_close > float(st1_val.iloc[-1]) and st1_bull
-        above_mid = curr_close > mid_pivot
-        rsi_ok = rsi_prev > 60.0
+        call_st = curr_close > float(st1_val.iloc[-1]) and st1_bull
+        call_pivot = curr_close > m3_upper
+        call_rsi = rsi_prev > 60.0
 
-        if above_st and above_mid and rsi_ok and is_green:
+        if call_st and call_pivot and call_rsi and is_green:
+          atm_ce, itm_ce = get_options_strikes(curr_close, step, direction="CALL")
           initial_sl = round(curr_close * (1.0 - TRAILING_SL_PCT), 2)
 
           pos["in_trade"] = True
+          pos["trade_type"] = "CALL"
           pos["entry_price"] = curr_close
-          pos["highest_price"] = curr_high
+          pos["extreme_price"] = curr_high
           pos["trailing_sl"] = initial_sl
           pos["atm_strike"] = atm_ce
           pos["itm_strike"] = itm_ce
 
           msg = (
-              f"🟢 *CALL / BUY ENTRY ALERT (9:30-3:15)*\n\n"
+              f"🟢 *CALL / LONG ENTRY ALERT (CE)*\n\n"
               f"• *Instrument:* `{name}`\n"
               f"• *Spot Entry:* ₹{curr_close:,.2f}\n"
               f"• *Initial 5% SL:* ₹{initial_sl:,.2f}\n"
-              f"• *Mid-Pivot Level:* ₹{mid_pivot:,.2f}\n"
+              f"• *Upper Mid-Pivot (M3):* ₹{m3_upper:,.2f}\n"
               f"• *SuperTrend (10,3):* ₹{float(st1_val.iloc[-1]):,.2f}\n"
               f"• *Prior RSI:* {rsi_prev:.2f}\n\n"
-              f"🎯 *Recommended Options Strikes:*\n"
-              f"• *ATM Call (CE):* `{atm_ce} CE`\n"
-              f"• *ITM Call (CE):* `{itm_ce} CE` *(Recommended)*\n\n"
-              f"📌 *Trailing Rule:* Stop-loss trails 5% below every new peak"
-              " high reached."
+              f"🎯 *Recommended Call Strikes:*\n"
+              f"• *ATM Call:* `{atm_ce} CE`\n"
+              f"• *ITM Call:* `{itm_ce} CE` *(Recommended)*\n\n"
+              f"📌 *Trailing Rule:* Stop-loss trails 5% below every new peak high."
           )
           send_telegram(msg)
+
+        # B. PUT / SHORT ENTRY CRITERIA (REVERSE)
+        else:
+          is_red = curr_close < curr_open
+          put_st = curr_close < float(st1_val.iloc[-1]) and st1_bear
+          put_pivot = curr_close < m2_lower
+          put_rsi = rsi_prev < 40.0
+
+          if put_st and put_pivot and put_rsi and is_red:
+            atm_pe, itm_pe = get_options_strikes(curr_close, step, direction="PUT")
+            initial_sl = round(curr_close * (1.0 + TRAILING_SL_PCT), 2)
+
+            pos["in_trade"] = True
+            pos["trade_type"] = "PUT"
+            pos["entry_price"] = curr_close
+            pos["extreme_price"] = curr_low
+            pos["trailing_sl"] = initial_sl
+            pos["atm_strike"] = atm_pe
+            pos["itm_strike"] = itm_pe
+
+            msg = (
+                f"🔴 *PUT / SHORT ENTRY ALERT (PE)*\n\n"
+                f"• *Instrument:* `{name}`\n"
+                f"• *Spot Entry:* ₹{curr_close:,.2f}\n"
+                f"• *Initial 5% SL:* ₹{initial_sl:,.2f}\n"
+                f"• *Lower Mid-Pivot (M2):* ₹{m2_lower:,.2f}\n"
+                f"• *SuperTrend (10,3):* ₹{float(st1_val.iloc[-1]):,.2f}\n"
+                f"• *Prior RSI:* {rsi_prev:.2f}\n\n"
+                f"🎯 *Recommended Put Strikes:*\n"
+                f"• *ATM Put:* `{atm_pe} PE`\n"
+                f"• *ITM Put:* `{itm_pe} PE` *(Recommended)*\n\n"
+                f"📌 *Trailing Rule:* Stop-loss trails 5% above every new valley low."
+            )
+            send_telegram(msg)
 
       state[ticker] = pos
 
