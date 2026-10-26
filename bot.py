@@ -9,10 +9,18 @@ import requests
 import yfinance as yf
 
 # =====================================================================
-# 1. TELEGRAM CONFIGURATION
+# 1. DUAL TELEGRAM CONFIGURATION (BROADCASTS TO BOTH)
 # =====================================================================
-TELEGRAM_BOT_TOKEN = "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k"
-TELEGRAM_CHAT_ID = "846124589"
+TELEGRAM_RECIPIENTS = [
+    {
+        "token": "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k",
+        "chat_id": "846124589",
+    },
+    {
+        "token": "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms",
+        "chat_id": "8865083462",
+    },
+]
 
 # =====================================================================
 # 2. WATCHLIST & STRIKE INTERVALS
@@ -71,16 +79,18 @@ def save_state(state):
 
 
 def send_telegram(text):
-  url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-  payload = {
-      "chat_id": TELEGRAM_CHAT_ID,
-      "text": text,
-      "parse_mode": "Markdown",
-  }
-  try:
-    requests.post(url, json=payload, timeout=10)
-  except Exception as e:
-    print(f"Telegram error: {e}")
+  """Sends alerts to all configured Telegram bots/accounts."""
+  for recipient in TELEGRAM_RECIPIENTS:
+    url = f"https://api.telegram.org/bot{recipient['token']}/sendMessage"
+    payload = {
+        "chat_id": recipient["chat_id"],
+        "text": text,
+        "parse_mode": "Markdown",
+    }
+    try:
+      requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+      print(f"Telegram error for chat {recipient['chat_id']}: {e}")
 
 
 def is_market_hours():
@@ -228,14 +238,12 @@ def run_scan():
       # SCENARIO A: ACTIVE POSITION MANAGEMENT (CHECK TSL & EXITS)
       # -------------------------------------------------------------
       if pos["in_trade"]:
-        # Update peak high and trail stop loss upwards
         if curr_high > pos["highest_price"]:
           pos["highest_price"] = curr_high
           new_tsl = curr_high * (1.0 - TRAILING_SL_PCT)
           if new_tsl > pos["trailing_sl"]:
             pos["trailing_sl"] = round(new_tsl, 2)
 
-        # Exit criteria checks
         tsl_hit = curr_close <= pos["trailing_sl"]
         pivot_exit = curr_close < s1
         exit_triggered = tsl_hit or st2_bear or pivot_exit
