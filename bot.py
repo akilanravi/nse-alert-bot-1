@@ -496,10 +496,39 @@ def run_scan():
     print(f"Done. Scanned {scanned} instruments, sent {alerts_sent} alert(s).")
 
 
-if __name__ == "__main__":
-    # Manual connectivity test: set TEST_TELEGRAM=1 (workflow_dispatch input)
-    if os.environ.get("TEST_TELEGRAM", "").strip() == "1":
-        ok = send_telegram("✅ *Scanner test message*\nGitHub Actions can reach Telegram.")
-        sys.exit(0 if ok else 1)
+import time
 
-    run_scan()
+def run_continuous_session():
+    ist = pytz.timezone("Asia/Kolkata")
+    print("🚀 5M Scanner Engine initialized. Starting intraday monitoring loop...")
+
+    while True:
+        now_ist = datetime.datetime.now(ist)
+
+        # Stop runner when Indian market closes at 3:30 PM IST
+        if now_ist.hour > 15 or (now_ist.hour == 15 and now_ist.minute >= 30):
+            print(f"[{now_ist.strftime('%H:%M:%S IST')}] Market closed (3:30 PM IST). Terminating session.")
+            break
+
+        # Stop runner on weekends
+        if now_ist.weekday() > 4:
+            print("Weekend detected. Terminating session.")
+            break
+
+        # Market active hours: 9:15 AM to 3:30 PM IST
+        if (now_ist.hour > 9 or (now_ist.hour == 9 and now_ist.minute >= 15)):
+            print(f"\n=======================================================")
+            print(f"⏰ Starting 5M Scan Cycle at: {now_ist.strftime('%Y-%m-%d %H:%M:%S IST')}")
+            print(f"=======================================================")
+            try:
+                run_scan()
+            except Exception as e:
+                print(f"Error during scan execution: {e}")
+        else:
+            print(f"[{now_ist.strftime('%H:%M:%S IST')}] Waiting for market open (9:15 AM IST)...")
+
+        print("Waiting 300 seconds (5 minutes) for the next candle...")
+        time.sleep(300)
+
+if __name__ == "__main__":
+    run_continuous_session()
