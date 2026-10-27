@@ -31,7 +31,7 @@ TELEGRAM_RECIPIENTS = [
 ]
 
 # =====================================================================
-# 2. WATCHLIST SPLIT INTO 5 PARALLEL GROUPS
+# 2. WATCHLIST SPLIT INTO 5 PARALLEL GROUPS (~20 TICKERS EACH)
 # =====================================================================
 SECTOR_MAPS = {
     "indices_banking": {
@@ -78,7 +78,7 @@ SECTOR_MAPS = {
 
 TIMEFRAME = "5m"
 ATR_MULTIPLIER = 1.5
-MAX_HOLD_CANDLES = 6 # 30-min time stop against theta decay
+MAX_HOLD_CANDLES = 6  # 30-min time stop against theta decay
 
 # =====================================================================
 # 3. STATE & UTILITIES
@@ -132,18 +132,18 @@ def get_market_timing_status():
     ist = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.datetime.now(ist)
     if now_ist.weekday() > 4:
-        return False, False, "Weekend"
+        return False, False, False, "Weekend"
 
     total_mins = now_ist.hour * 60 + now_ist.minute
-    market_open = 9 * 60 + 15
-    market_close = 15 * 60 + 30
+    window_start = 9 * 60 + 30   # 09:30 AM IST
+    window_close = 15 * 60 + 15  # 03:15 PM IST
 
-    is_open = market_open <= total_mins <= market_close
+    is_running = window_start <= total_mins <= window_close
+    is_hard_squareoff_time = total_mins >= window_close
+    # Allow entries between 09:30 AM and 03:00 PM IST
+    is_valid_entry_time = (9 * 60 + 30 <= total_mins <= 15 * 60 + 0)
 
-    # Institutional Filter: Skip first 15 mins (9:15-9:30), midday chop (11:30-13:00), and last 30 mins
-    is_valid_entry_time = (9 * 60 + 30 <= total_mins <= 11 * 60 + 30) or (13 * 60 <= total_mins <= 15 * 60)
-
-    return is_open, is_valid_entry_time, now_ist.strftime('%H:%M:%S IST')
+    return is_running, is_valid_entry_time, is_hard_squareoff_time, now_ist.strftime('%H:%M:%S IST')
 
 def get_options_strikes(price, step, direction="CALL"):
     atm = int(round(price / step) * step) if step >= 1 else round(price / step) * step
@@ -153,12 +153,11 @@ def get_options_strikes(price, step, direction="CALL"):
     return atm_fmt, itm_fmt
 
 # =====================================================================
-# 4. TECHNICAL INDICATORS (VWAP, ATR, EMA, SUPERTREND, RSI)
+# 4. TECHNICAL INDICATORS
 # =====================================================================
 def calculate_vwap(df):
     typical_price = (df["High"] + df["Low"] + df["Close"]) / 3.0
     vol = df["Volume"].replace(0, 1)
-    # Intraday cumulative VWAP
     cum_vol_price = (typical_price * vol).cumsum()
     cum_vol = vol.cumsum()
     return cum_vol_price / cum_vol
@@ -216,7 +215,6 @@ def calculate_supertrend(df, period=10, multiplier=3.0):
     return st, direction
 
 def get_daily_context_bulk(tickers):
-    """Pulls daily data for Pivots and 20 EMA trend check"""
     try:
         data = yf.download(tickers, period="1mo", interval="1d", progress=False, group_by="ticker", threads=False)
         context = {}
@@ -233,8 +231,6 @@ def get_daily_context_bulk(tickers):
                 s1 = (2.0 * p) - h
                 m3_upper = (p + r1) / 2.0
                 m2_lower = (p + s1) / 2.0
-                
-                # Higher Timeframe Trend: 20-day EMA
                 ema20 = float(df_d["Close"].ewm(span=20, adjust=False).mean().iloc[-1])
                 context[t] = (m3_upper, m2_lower, r1, s1, ema20)
             except Exception:
@@ -247,9 +243,9 @@ def get_daily_context_bulk(tickers):
 # 5. SCAN CYCLE
 # =====================================================================
 def run_scan(group_name, strike_dict):
-    is_open, is_valid_entry, cur_time = get_market_timing_status()
-    if not is_open:
-        print(f"[{group_name}] Outside market hours ({cur_time}).")
+    is_running, is_valid_entry, is_hard_squareoff, cur_time = get_market_timing_status()
+    if not is_running and not is_hard_squareoff:
+        print(f"[{group_name}] Outside active window 09:30 AM - 03:15 PM IST ({cur_time}).")
         return
 
     watchlist = list(strike_dict.keys())
@@ -271,8 +267,6 @@ def run_scan(group_name, strike_dict):
                 continue
 
             m3_upper, m2_lower, r1, s1, daily_ema20 = context_map[ticker]
-            
-            # Indicators
             vwap_series = calculate_vwap(df)
             curr_vwap = float(vwap_series.iloc[-1])
             atr_series = calculate_atr(df, period=14)
@@ -287,8 +281,7 @@ def run_scan(group_name, strike_dict):
             curr_high = float(df["High"].iloc[-1])
             curr_low = float(df["Low"].iloc[-1])
             curr_open = float(df["Open"].iloc[-1])
-            
-            # Volume 20-period SMA confirmation
+
             curr_vol = float(df["Volume"].iloc[-1])
             avg_vol_20 = float(df["Volume"].rolling(window=20).mean().iloc[-1])
             vol_confirmed = curr_vol >= avg_vol_20
@@ -304,15 +297,29 @@ def run_scan(group_name, strike_dict):
             pos = state.get(ticker, get_default_item_state())
 
             # -------------------------------------------------------------
-            # A. POSITION TRACKING (TRAILING SL, VWAP EXIT, & TIME STOP)
+            # A. POSITION TRACKING & EXITS
             # -------------------------------------------------------------
             if pos["in_trade"]:
                 pos["candles_held"] += 1
                 trade_type = pos["trade_type"]
                 buf = pos.get("trail_buffer", trail_buffer)
 
-                # TIME STOP (Document recommendation: 6 candles / 30m theta killer)
                 time_stop_hit = pos["candles_held"] >= MAX_HOLD_CANDLES
+
+                # Hard Square-off at 3:15 PM IST
+                if is_hard_squareoff:
+                    pnl = (curr_close - pos["entry_price"]) if trade_type == "CALL" else (pos["entry_price"] - curr_close)
+                    opt = f"{pos['itm_strike']} {'CE' if trade_type == 'CALL' else 'PE'}"
+                    send_telegram(
+                        f"⏰ *3:15 PM HARD SQUARE-OFF ALERT*\n\n"
+                        f"• Instrument: `{name}`\n"
+                        f"• Spot Exit: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n"
+                        f"• Reason: 3:15 PM End-of-Day Cutoff\n"
+                        f"• Action: Close `{opt}` immediately"
+                    )
+                    pos = get_default_item_state()
+                    state[ticker] = pos
+                    continue
 
                 if trade_type == "CALL":
                     if curr_high > pos["extreme_price"]:
@@ -327,7 +334,7 @@ def run_scan(group_name, strike_dict):
                     exit_triggered = tsl_hit or st2_flipped_bear or pivot_exit or vwap_exit or time_stop_hit
 
                     if exit_triggered:
-                        reason = "Trailing SL Hit" if tsl_hit else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop (Theta Guard)" if time_stop_hit else "ST/Pivot Flip"))
+                        reason = "Trailing SL Hit" if tsl_hit else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST/Pivot Flip"))
                         pnl = curr_close - pos["entry_price"]
                         send_telegram(
                             f"🔴 *CALL EXIT*: `{name}`\n"
@@ -350,7 +357,7 @@ def run_scan(group_name, strike_dict):
                     exit_triggered = tsl_hit or st2_flipped_bull or pivot_exit or vwap_exit or time_stop_hit
 
                     if exit_triggered:
-                        reason = "Trailing SL Hit" if tsl_hit else ("VWAP Breakout" if vwap_exit else ("30m Time Stop (Theta Guard)" if time_stop_hit else "ST/Pivot Flip"))
+                        reason = "Trailing SL Hit" if tsl_hit else ("VWAP Breakout" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST/Pivot Flip"))
                         pnl = pos["entry_price"] - curr_close
                         send_telegram(
                             f"🟢 *PUT EXIT*: `{name}`\n"
@@ -361,17 +368,15 @@ def run_scan(group_name, strike_dict):
                         pos = get_default_item_state()
 
             # -------------------------------------------------------------
-            # B. MULTI-FACTOR ENTRY SEQUENCE (WITH DOCUMENT ENHANCEMENTS)
+            # B. 2-CANDLE ENTRY LOGIC (9:30 AM TO 3:00 PM IST)
             # -------------------------------------------------------------
             else:
                 if not is_valid_entry:
-                    # Skip searching for new entries during opening 15m and midday chop
                     continue
 
                 is_green = curr_close > curr_open
                 is_red = curr_close < curr_open
 
-                # CALL RULES: Green candle + ST Bull + Above M3 + RSI > 60 + Above VWAP + Daily Trend Above 20 EMA
                 call_condition = (
                     is_green and 
                     st1_bull and 
@@ -382,7 +387,6 @@ def run_scan(group_name, strike_dict):
                     (curr_close > daily_ema20)
                 )
 
-                # PUT RULES: Red candle + ST Bear + Below M2 + RSI < 40 + Below VWAP + Daily Trend Below 20 EMA
                 put_condition = (
                     is_red and 
                     st1_bear and 
@@ -393,7 +397,7 @@ def run_scan(group_name, strike_dict):
                     (curr_close < daily_ema20)
                 )
 
-                # --- Candle 2 Confirmation Check (Includes Volume Confirmation) ---
+                # Candle 2 Check + Volume
                 if pos.get("pending_stage") == "PENDING_CALL":
                     if call_condition and vol_confirmed:
                         atm, itm = get_options_strikes(curr_close, step, "CALL")
@@ -434,21 +438,21 @@ def run_scan(group_name, strike_dict):
                     else:
                         pos["pending_stage"] = None
 
-                # --- Candle 1 Setup Check ---
+                # Candle 1 Setup Check
                 else:
                     if call_condition:
                         pos["pending_stage"] = "PENDING_CALL"
                         send_telegram(
                             f"🟡 *CALL SETUP DETECTED (Candle 1)*\n\n"
                             f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
-                            f"• Status: Above VWAP & M3 Pivot. Waiting for Candle 2 Volume Confirmation!"
+                            f"• Above VWAP & M3 Pivot. Waiting for Candle 2 Confirmation!"
                         )
                     elif put_condition:
                         pos["pending_stage"] = "PENDING_PUT"
                         send_telegram(
                             f"🟡 *PUT SETUP DETECTED (Candle 1)*\n\n"
                             f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
-                            f"• Status: Below VWAP & M2 Pivot. Waiting for Candle 2 Volume Confirmation!"
+                            f"• Below VWAP & M2 Pivot. Waiting for Candle 2 Confirmation!"
                         )
 
             state[ticker] = pos
@@ -458,7 +462,7 @@ def run_scan(group_name, strike_dict):
     save_state(group_name, state)
 
 # =====================================================================
-# 6. CONTINUOUS SESSION LOOP
+# 6. INTRADAY CONTINUOUS LOOP (9:30 AM TO 3:15 PM IST)
 # =====================================================================
 def main():
     parser = argparse.ArgumentParser()
@@ -468,21 +472,25 @@ def main():
     group_name = args.group
     strike_dict = SECTOR_MAPS[group_name]
     ist = pytz.timezone("Asia/Kolkata")
-    print(f"🚀 Enhanced Engine active for [{group_name}]. Monitoring {len(strike_dict)} tickers...")
+    print(f"🚀 Session active for [{group_name}]. Monitoring {len(strike_dict)} tickers (09:30 - 15:15 IST)...")
 
     while True:
         now_ist = datetime.datetime.now(ist)
-        if now_ist.hour > 15 or (now_ist.hour == 15 and now_ist.minute >= 30) or now_ist.weekday() > 4:
-            print(f"[{group_name}] Market closed. Terminating worker.")
+        total_mins = now_ist.hour * 60 + now_ist.minute
+
+        # Terminate script after 3:15 PM IST (15:15 = 915 mins) or on weekends
+        if total_mins > 915 or now_ist.weekday() > 4:
+            print(f"[{group_name}] Session reached 3:15 PM IST cutoff. Concluding execution.")
             break
 
-        if now_ist.hour > 9 or (now_ist.hour == 9 and now_ist.minute >= 15):
+        # Run scans once clock passes 9:30 AM IST (09:30 = 570 mins)
+        if total_mins >= 570:
             try:
                 run_scan(group_name, strike_dict)
             except Exception as e:
-                print(f"[{group_name}] Error during scan: {e}")
+                print(f"[{group_name}] Scan cycle error: {e}")
         else:
-            print(f"[{group_name}] Waiting for 9:15 AM IST opening...")
+            print(f"[{group_name}] Time: {now_ist.strftime('%H:%M:%S IST')} — Waiting for 9:30 AM IST session start...")
 
         time.sleep(300)
 
