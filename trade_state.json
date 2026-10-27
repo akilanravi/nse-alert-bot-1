@@ -140,7 +140,7 @@
     "itm_strike": 0
   },
   "MARUTI.NS": {
-    "in_trade": true,
+    "in_trade": false,
     "trade_type": "CALL",
     "entry_price": 11387.0,
     "extreme_price": 11441.0,
@@ -530,7 +530,7 @@
     "itm_strike": 0
   },
   "BAJAJ-AUTO.NS": {
-    "in_trade": true,
+    "in_trade": false,
     "trade_type": "CALL",
     "entry_price": 10331.0,
     "extreme_price": 10346.0,
@@ -570,7 +570,7 @@
     "itm_strike": 0
   },
   "BHARATFORG.NS": {
-    "in_trade": true,
+    "in_trade": false,
     "trade_type": "CALL",
     "entry_price": 1776.199951171875,
     "extreme_price": 1787.800048828125,
@@ -710,7 +710,7 @@
     "itm_strike": 0
   },
   "DRREDDY.NS": {
-    "in_trade": true,
+    "in_trade": false,
     "trade_type": "CALL",
     "entry_price": 1318.800048828125,
     "extreme_price": 1320.0,
@@ -1110,7 +1110,7 @@
     "itm_strike": 0
   },
   "SHREECEM.NS": {
-    "in_trade": true,
+    "in_trade": false,
     "trade_type": "CALL",
     "entry_price": 23375.0,
     "extreme_price": 23420.0,
