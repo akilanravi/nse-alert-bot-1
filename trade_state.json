@@ -1110,14 +1110,14 @@
     "itm_strike": 0
   },
   "SHREECEM.NS": {
-    "in_trade": false,
-    "trade_type": "",
-    "entry_price": 0.0,
-    "extreme_price": 0.0,
-    "trailing_sl": 0.0,
-    "trail_buffer": 0.0,
-    "atm_strike": 0,
-    "itm_strike": 0
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 23375.0,
+    "extreme_price": 23375.0,
+    "trailing_sl": 23297.22,
+    "trail_buffer": 77.78,
+    "atm_strike": 23500,
+    "itm_strike": 23250
   },
   "PIDILITIND.NS": {
     "in_trade": false,
@@ -1140,6 +1140,36 @@
     "itm_strike": 0
   },
   "PIIND.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ICICIPRULI.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "LTIM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "UNITEDSPR.NS": {
     "in_trade": false,
     "trade_type": "",
     "entry_price": 0.0,
