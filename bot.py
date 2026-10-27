@@ -31,7 +31,7 @@ TELEGRAM_RECIPIENTS = [
 ]
 
 # =====================================================================
-# 2. WATCHLIST SPLIT INTO 5 PARALLEL GROUPS (~20 TICKERS EACH)
+# 2. WATCHLIST SPLIT INTO 5 PARALLEL GROUPS
 # =====================================================================
 SECTOR_MAPS = {
     "indices_banking": {
@@ -78,6 +78,7 @@ SECTOR_MAPS = {
 
 TIMEFRAME = "5m"
 ATR_MULTIPLIER = 1.5
+MAX_HOLD_CANDLES = 6 # 30-min time stop against theta decay
 
 # =====================================================================
 # 3. STATE & UTILITIES
@@ -92,7 +93,8 @@ def get_default_item_state():
         "trailing_sl": 0.0,
         "trail_buffer": 0.0,
         "atm_strike": 0,
-        "itm_strike": 0
+        "itm_strike": 0,
+        "candles_held": 0
     }
 
 def load_state(group_name, symbols):
@@ -104,8 +106,9 @@ def load_state(group_name, symbols):
                 for t in symbols:
                     if t not in saved:
                         saved[t] = get_default_item_state()
-                    elif "pending_stage" not in saved[t]:
-                        saved[t]["pending_stage"] = None
+                    else:
+                        if "candles_held" not in saved[t]:
+                            saved[t]["candles_held"] = 0
                 return saved
         except Exception:
             pass
@@ -125,14 +128,22 @@ def send_telegram(text):
         except Exception as e:
             print(f"Telegram error: {e}")
 
-def is_market_hours():
+def get_market_timing_status():
     ist = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.datetime.now(ist)
     if now_ist.weekday() > 4:
-        return False
-    market_start = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
-    market_end = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
-    return market_start <= now_ist <= market_end
+        return False, False, "Weekend"
+
+    total_mins = now_ist.hour * 60 + now_ist.minute
+    market_open = 9 * 60 + 15
+    market_close = 15 * 60 + 30
+
+    is_open = market_open <= total_mins <= market_close
+
+    # Institutional Filter: Skip first 15 mins (9:15-9:30), midday chop (11:30-13:00), and last 30 mins
+    is_valid_entry_time = (9 * 60 + 30 <= total_mins <= 11 * 60 + 30) or (13 * 60 <= total_mins <= 15 * 60)
+
+    return is_open, is_valid_entry_time, now_ist.strftime('%H:%M:%S IST')
 
 def get_options_strikes(price, step, direction="CALL"):
     atm = int(round(price / step) * step) if step >= 1 else round(price / step) * step
@@ -142,8 +153,16 @@ def get_options_strikes(price, step, direction="CALL"):
     return atm_fmt, itm_fmt
 
 # =====================================================================
-# 4. INDICATORS
+# 4. TECHNICAL INDICATORS (VWAP, ATR, EMA, SUPERTREND, RSI)
 # =====================================================================
+def calculate_vwap(df):
+    typical_price = (df["High"] + df["Low"] + df["Close"]) / 3.0
+    vol = df["Volume"].replace(0, 1)
+    # Intraday cumulative VWAP
+    cum_vol_price = (typical_price * vol).cumsum()
+    cum_vol = vol.cumsum()
+    return cum_vol_price / cum_vol
+
 def calculate_atr(df, period=14):
     high, low, close = df["High"], df["Low"], df["Close"]
     tr1 = high - low
@@ -196,15 +215,16 @@ def calculate_supertrend(df, period=10, multiplier=3.0):
 
     return st, direction
 
-def get_daily_pivots_bulk(tickers):
+def get_daily_context_bulk(tickers):
+    """Pulls daily data for Pivots and 20 EMA trend check"""
     try:
-        data = yf.download(tickers, period="5d", interval="1d", progress=False, group_by="ticker", threads=False)
-        pivots = {}
+        data = yf.download(tickers, period="1mo", interval="1d", progress=False, group_by="ticker", threads=False)
+        context = {}
         for t in tickers:
             try:
                 df_d = data[t] if len(tickers) > 1 else data
                 df_d = df_d.dropna()
-                if len(df_d) < 2:
+                if len(df_d) < 20:
                     continue
                 prev = df_d.iloc[-2]
                 h, l, c = float(prev["High"]), float(prev["Low"]), float(prev["Close"])
@@ -213,25 +233,29 @@ def get_daily_pivots_bulk(tickers):
                 s1 = (2.0 * p) - h
                 m3_upper = (p + r1) / 2.0
                 m2_lower = (p + s1) / 2.0
-                pivots[t] = (m3_upper, m2_lower, r1, s1)
+                
+                # Higher Timeframe Trend: 20-day EMA
+                ema20 = float(df_d["Close"].ewm(span=20, adjust=False).mean().iloc[-1])
+                context[t] = (m3_upper, m2_lower, r1, s1, ema20)
             except Exception:
                 continue
-        return pivots
+        return context
     except Exception:
         return {}
 
 # =====================================================================
-# 5. SCAN CYCLE FOR A SPECIFIC GROUP
+# 5. SCAN CYCLE
 # =====================================================================
 def run_scan(group_name, strike_dict):
-    if not is_market_hours():
-        print(f"[{group_name}] Outside market hours.")
+    is_open, is_valid_entry, cur_time = get_market_timing_status()
+    if not is_open:
+        print(f"[{group_name}] Outside market hours ({cur_time}).")
         return
 
     watchlist = list(strike_dict.keys())
-    print(f"[{group_name}] Scanning {len(watchlist)} tickers...")
+    print(f"[{group_name}] Scanning {len(watchlist)} tickers at {cur_time}...")
     state = load_state(group_name, watchlist)
-    pivots_map = get_daily_pivots_bulk(watchlist)
+    context_map = get_daily_context_bulk(watchlist)
 
     try:
         intraday_data = yf.download(watchlist, period="3d", interval=TIMEFRAME, progress=False, group_by="ticker", threads=False)
@@ -243,10 +267,14 @@ def run_scan(group_name, strike_dict):
         try:
             df = intraday_data[ticker] if len(watchlist) > 1 else intraday_data
             df = df.dropna()
-            if len(df) < 30 or ticker not in pivots_map:
+            if len(df) < 30 or ticker not in context_map:
                 continue
 
-            m3_upper, m2_lower, r1, s1 = pivots_map[ticker]
+            m3_upper, m2_lower, r1, s1, daily_ema20 = context_map[ticker]
+            
+            # Indicators
+            vwap_series = calculate_vwap(df)
+            curr_vwap = float(vwap_series.iloc[-1])
             atr_series = calculate_atr(df, period=14)
             current_atr = float(atr_series.iloc[-1])
             trail_buffer = round(current_atr * ATR_MULTIPLIER, 2)
@@ -259,6 +287,11 @@ def run_scan(group_name, strike_dict):
             curr_high = float(df["High"].iloc[-1])
             curr_low = float(df["Low"].iloc[-1])
             curr_open = float(df["Open"].iloc[-1])
+            
+            # Volume 20-period SMA confirmation
+            curr_vol = float(df["Volume"].iloc[-1])
+            avg_vol_20 = float(df["Volume"].rolling(window=20).mean().iloc[-1])
+            vol_confirmed = curr_vol >= avg_vol_20
 
             st1_bull = st1_dir.iloc[-1] == 1
             st1_bear = st1_dir.iloc[-1] == -1
@@ -270,10 +303,16 @@ def run_scan(group_name, strike_dict):
             name = ticker.replace(".NS", "").replace("^NSEI", "NIFTY 50").replace("^NSEBANK", "BANK NIFTY").replace("^BSESN", "SENSEX")
             pos = state.get(ticker, get_default_item_state())
 
-            # Trailing SL & Exit
+            # -------------------------------------------------------------
+            # A. POSITION TRACKING (TRAILING SL, VWAP EXIT, & TIME STOP)
+            # -------------------------------------------------------------
             if pos["in_trade"]:
+                pos["candles_held"] += 1
                 trade_type = pos["trade_type"]
                 buf = pos.get("trail_buffer", trail_buffer)
+
+                # TIME STOP (Document recommendation: 6 candles / 30m theta killer)
+                time_stop_hit = pos["candles_held"] >= MAX_HOLD_CANDLES
 
                 if trade_type == "CALL":
                     if curr_high > pos["extreme_price"]:
@@ -282,12 +321,21 @@ def run_scan(group_name, strike_dict):
                         if new_tsl > pos["trailing_sl"]:
                             pos["trailing_sl"] = new_tsl
 
-                    if (curr_close <= pos["trailing_sl"]) or st2_flipped_bear or (curr_close < s1):
-                        reason = "Trailing SL Hit" if curr_close <= pos["trailing_sl"] else ("ST Flip" if st2_flipped_bear else "Broken S1")
+                    tsl_hit = curr_close <= pos["trailing_sl"]
+                    vwap_exit = curr_close < curr_vwap
+                    pivot_exit = curr_close < s1
+                    exit_triggered = tsl_hit or st2_flipped_bear or pivot_exit or vwap_exit or time_stop_hit
+
+                    if exit_triggered:
+                        reason = "Trailing SL Hit" if tsl_hit else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop (Theta Guard)" if time_stop_hit else "ST/Pivot Flip"))
                         pnl = curr_close - pos["entry_price"]
-                        send_telegram(f"🔴 *CALL EXIT*: `{name}` | Spot: ₹{curr_close:,.2f} | PnL: {pnl:+.2f} pts | Reason: {reason} | Exit `{pos['itm_strike']} CE`")
-                        pos["in_trade"] = False
-                        pos["pending_stage"] = None
+                        send_telegram(
+                            f"🔴 *CALL EXIT*: `{name}`\n"
+                            f"• Exit Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n"
+                            f"• Reason: *{reason}*\n"
+                            f"• Action: Square off `{pos['itm_strike']} CE`"
+                        )
+                        pos = get_default_item_state()
 
                 elif trade_type == "PUT":
                     if curr_low < pos["extreme_price"]:
@@ -296,45 +344,112 @@ def run_scan(group_name, strike_dict):
                         if new_tsl < pos["trailing_sl"] or pos["trailing_sl"] == 0:
                             pos["trailing_sl"] = new_tsl
 
-                    if (curr_close >= pos["trailing_sl"]) or st2_flipped_bull or (curr_close > r1):
-                        reason = "Trailing SL Hit" if curr_close >= pos["trailing_sl"] else ("ST Flip" if st2_flipped_bull else "Broken R1")
-                        pnl = pos["entry_price"] - curr_close
-                        send_telegram(f"🟢 *PUT EXIT*: `{name}` | Spot: ₹{curr_close:,.2f} | PnL: {pnl:+.2f} pts | Reason: {reason} | Exit `{pos['itm_strike']} PE`")
-                        pos["in_trade"] = False
-                        pos["pending_stage"] = None
+                    tsl_hit = curr_close >= pos["trailing_sl"]
+                    vwap_exit = curr_close > curr_vwap
+                    pivot_exit = curr_close > r1
+                    exit_triggered = tsl_hit or st2_flipped_bull or pivot_exit or vwap_exit or time_stop_hit
 
-            # 2-Candle Entry Logic
+                    if exit_triggered:
+                        reason = "Trailing SL Hit" if tsl_hit else ("VWAP Breakout" if vwap_exit else ("30m Time Stop (Theta Guard)" if time_stop_hit else "ST/Pivot Flip"))
+                        pnl = pos["entry_price"] - curr_close
+                        send_telegram(
+                            f"🟢 *PUT EXIT*: `{name}`\n"
+                            f"• Exit Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n"
+                            f"• Reason: *{reason}*\n"
+                            f"• Action: Square off `{pos['itm_strike']} PE`"
+                        )
+                        pos = get_default_item_state()
+
+            # -------------------------------------------------------------
+            # B. MULTI-FACTOR ENTRY SEQUENCE (WITH DOCUMENT ENHANCEMENTS)
+            # -------------------------------------------------------------
             else:
+                if not is_valid_entry:
+                    # Skip searching for new entries during opening 15m and midday chop
+                    continue
+
                 is_green = curr_close > curr_open
                 is_red = curr_close < curr_open
-                call_ok = (curr_close > float(st1_val.iloc[-1])) and st1_bull and (curr_close > m3_upper) and (rsi_prev > 60.0) and is_green
-                put_ok = (curr_close < float(st1_val.iloc[-1])) and st1_bear and (curr_close < m2_lower) and (rsi_prev < 40.0) and is_red
 
-                # Candle 2 check
+                # CALL RULES: Green candle + ST Bull + Above M3 + RSI > 60 + Above VWAP + Daily Trend Above 20 EMA
+                call_condition = (
+                    is_green and 
+                    st1_bull and 
+                    (curr_close > float(st1_val.iloc[-1])) and 
+                    (curr_close > m3_upper) and 
+                    (rsi_prev > 60.0) and 
+                    (curr_close > curr_vwap) and 
+                    (curr_close > daily_ema20)
+                )
+
+                # PUT RULES: Red candle + ST Bear + Below M2 + RSI < 40 + Below VWAP + Daily Trend Below 20 EMA
+                put_condition = (
+                    is_red and 
+                    st1_bear and 
+                    (curr_close < float(st1_val.iloc[-1])) and 
+                    (curr_close < m2_lower) and 
+                    (rsi_prev < 40.0) and 
+                    (curr_close < curr_vwap) and 
+                    (curr_close < daily_ema20)
+                )
+
+                # --- Candle 2 Confirmation Check (Includes Volume Confirmation) ---
                 if pos.get("pending_stage") == "PENDING_CALL":
-                    if call_ok:
+                    if call_condition and vol_confirmed:
                         atm, itm = get_options_strikes(curr_close, step, "CALL")
-                        pos.update({"in_trade": True, "pending_stage": None, "trade_type": "CALL", "entry_price": curr_close, "extreme_price": curr_high, "trailing_sl": round(curr_close - trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
-                        send_telegram(f"🟢 *CALL CONFIRMED ENTRY (CE)*\n\n• `{name}`\n• Spot: ₹{curr_close:,.2f}\n• SL: ₹{pos['trailing_sl']:,.2f}\n• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)")
+                        pos.update({
+                            "in_trade": True, "pending_stage": None, "trade_type": "CALL",
+                            "entry_price": curr_close, "extreme_price": curr_high,
+                            "trailing_sl": round(curr_close - trail_buffer, 2), "trail_buffer": trail_buffer,
+                            "atm_strike": atm, "itm_strike": itm, "candles_held": 0
+                        })
+                        send_telegram(
+                            f"🟢 *CALL CONFIRMED ENTRY (CE)*\n\n"
+                            f"✅ *2nd Candle + Volume Confirmed!*\n"
+                            f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
+                            f"• VWAP: ₹{curr_vwap:,.2f} | Dynamic SL: ₹{pos['trailing_sl']:,.2f}\n"
+                            f"• Recommended: `{itm} CE` (ATM: `{atm} CE`)\n"
+                            f"⏳ *Auto Time-Stop:* 30 Mins (Max 6 Candles)"
+                        )
                     else:
                         pos["pending_stage"] = None
 
                 elif pos.get("pending_stage") == "PENDING_PUT":
-                    if put_ok:
+                    if put_condition and vol_confirmed:
                         atm, itm = get_options_strikes(curr_close, step, "PUT")
-                        pos.update({"in_trade": True, "pending_stage": None, "trade_type": "PUT", "entry_price": curr_close, "extreme_price": curr_low, "trailing_sl": round(curr_close + trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
-                        send_telegram(f"🔴 *PUT CONFIRMED ENTRY (PE)*\n\n• `{name}`\n• Spot: ₹{curr_close:,.2f}\n• SL: ₹{pos['trailing_sl']:,.2f}\n• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)")
+                        pos.update({
+                            "in_trade": True, "pending_stage": None, "trade_type": "PUT",
+                            "entry_price": curr_close, "extreme_price": curr_low,
+                            "trailing_sl": round(curr_close + trail_buffer, 2), "trail_buffer": trail_buffer,
+                            "atm_strike": atm, "itm_strike": itm, "candles_held": 0
+                        })
+                        send_telegram(
+                            f"🔴 *PUT CONFIRMED ENTRY (PE)*\n\n"
+                            f"✅ *2nd Candle + Volume Confirmed!*\n"
+                            f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
+                            f"• VWAP: ₹{curr_vwap:,.2f} | Dynamic SL: ₹{pos['trailing_sl']:,.2f}\n"
+                            f"• Recommended: `{itm} PE` (ATM: `{atm} PE`)\n"
+                            f"⏳ *Auto Time-Stop:* 30 Mins (Max 6 Candles)"
+                        )
                     else:
                         pos["pending_stage"] = None
 
-                # Candle 1 check
+                # --- Candle 1 Setup Check ---
                 else:
-                    if call_ok:
+                    if call_condition:
                         pos["pending_stage"] = "PENDING_CALL"
-                        send_telegram(f"🟡 *CALL SETUP DETECTED (1st Candle)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n⏳ *Wait for another candle to complete!*")
-                    elif put_ok:
+                        send_telegram(
+                            f"🟡 *CALL SETUP DETECTED (Candle 1)*\n\n"
+                            f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
+                            f"• Status: Above VWAP & M3 Pivot. Waiting for Candle 2 Volume Confirmation!"
+                        )
+                    elif put_condition:
                         pos["pending_stage"] = "PENDING_PUT"
-                        send_telegram(f"🟡 *PUT SETUP DETECTED (1st Candle)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n⏳ *Wait for another candle to complete!*")
+                        send_telegram(
+                            f"🟡 *PUT SETUP DETECTED (Candle 1)*\n\n"
+                            f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
+                            f"• Status: Below VWAP & M2 Pivot. Waiting for Candle 2 Volume Confirmation!"
+                        )
 
             state[ticker] = pos
         except Exception:
@@ -353,7 +468,7 @@ def main():
     group_name = args.group
     strike_dict = SECTOR_MAPS[group_name]
     ist = pytz.timezone("Asia/Kolkata")
-    print(f"🚀 Worker started for group [{group_name}]. Monitoring {len(strike_dict)} tickers...")
+    print(f"🚀 Enhanced Engine active for [{group_name}]. Monitoring {len(strike_dict)} tickers...")
 
     while True:
         now_ist = datetime.datetime.now(ist)
@@ -365,9 +480,9 @@ def main():
             try:
                 run_scan(group_name, strike_dict)
             except Exception as e:
-                print(f"[{group_name}] Loop error: {e}")
+                print(f"[{group_name}] Error during scan: {e}")
         else:
-            print(f"[{group_name}] Waiting for 9:15 AM IST open...")
+            print(f"[{group_name}] Waiting for 9:15 AM IST opening...")
 
         time.sleep(300)
 
