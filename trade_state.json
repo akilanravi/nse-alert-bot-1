@@ -158,5 +158,995 @@
     "trail_buffer": 0.0,
     "atm_strike": 0,
     "itm_strike": 0
+  },
+  "KOTAKBANK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BAJAJFINSV.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "INDUSINDBK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "FEDERALBNK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "AUBANK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BANDHANBNK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "IDFCFIRSTB.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "PNB.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BANKBARODA.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "CANBK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "CHOLAFIN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SHRIRAMFIN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "MUTHOOTFIN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "M&MFIN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "PFC.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "RECLTD.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SBICARD.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SBILIFE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HDFCLIFE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HCLTECH.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "WIPRO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TECHM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "PERSISTENT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "COFORGE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "MPHASIS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "NAUKRI.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ONGC.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BPCL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "IOC.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "GAIL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "NTPC.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "POWERGRID.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TATAPOWER.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ADANIENT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ADANIPORTS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "COALINDIA.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "M&M.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BAJAJ-AUTO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "EICHERMOT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HEROMOTOCO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TVSMOTOR.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BHARATFORG.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ASHOKLEY.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "MRF.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BALKRISIND.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "APOLLOTYRE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TATASTEEL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "JSWSTEEL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HINDALCO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "JINDALSTEL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "VEDL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "NMDC.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SAIL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "NATIONALUM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SUNPHARMA.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "DRREDDY.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "CIPLA.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "DIVISLAB.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "APOLLOHOSP.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "LUPIN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "AUROPHARMA.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BIOCON.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TORNTPHARM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ZYDUSLIFE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HINDUNILVR.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ITC.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "NESTLEIND.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BRITANNIA.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TATACONSUM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "DABUR.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "MARICO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "COLPAL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "GODREJCP.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TRENT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TITAN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ASIANPAINT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BERGEPAINT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "INDIGO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HAVELLS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "DIXON.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "POLYCAB.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "VOLTAS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "JUBLFOOD.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SIEMENS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ABB.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BHEL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HAL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BEL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "CUMMINSIND.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "DLF.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "GODREJPROP.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "OBEROIRLTY.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ULTRACEMCO.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "GRASIM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "AMBUJACEM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SHREECEM.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "PIDILITIND.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SRF.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "PIIND.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
   }
 }
