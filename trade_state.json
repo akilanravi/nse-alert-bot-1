@@ -1,0 +1,162 @@
+{
+  "^NSEI": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "^NSEBANK": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "^BSESN": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "NIFTY_FIN_SERVICE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "RELIANCE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "HDFCBANK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "ICICIBANK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "SBIN.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TATAMOTORS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "INFY.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "TCS.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "LT.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "AXISBANK.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "BAJFINANCE.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  },
+  "MARUTI.NS": {
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 11387.0,
+    "extreme_price": 11399.0,
+    "trailing_sl": 11337.32,
+    "trail_buffer": 49.68,
+    "atm_strike": 11400,
+    "itm_strike": 11300
+  },
+  "BHARTIARTL.NS": {
+    "in_trade": false,
+    "trade_type": "",
+    "entry_price": 0.0,
+    "extreme_price": 0.0,
+    "trailing_sl": 0.0,
+    "trail_buffer": 0.0,
+    "atm_strike": 0,
+    "itm_strike": 0
+  }
+}
