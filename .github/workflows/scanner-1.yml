@@ -1,4 +1,5 @@
 name: 5M Telegram Alert Scanner
+# Public activation trigger
 
 on:
   schedule:
