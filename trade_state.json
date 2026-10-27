@@ -573,8 +573,8 @@
     "in_trade": true,
     "trade_type": "CALL",
     "entry_price": 1776.199951171875,
-    "extreme_price": 1776.199951171875,
-    "trailing_sl": 1771.23,
+    "extreme_price": 1778.5,
+    "trailing_sl": 1773.53,
     "trail_buffer": 4.97,
     "atm_strike": 1780,
     "itm_strike": 1760
@@ -710,14 +710,14 @@
     "itm_strike": 0
   },
   "DRREDDY.NS": {
-    "in_trade": false,
-    "trade_type": "",
-    "entry_price": 0.0,
-    "extreme_price": 0.0,
-    "trailing_sl": 0.0,
-    "trail_buffer": 0.0,
-    "atm_strike": 0,
-    "itm_strike": 0
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 1318.800048828125,
+    "extreme_price": 1319.199951171875,
+    "trailing_sl": 1314.61,
+    "trail_buffer": 4.19,
+    "atm_strike": 1300,
+    "itm_strike": 1250
   },
   "CIPLA.NS": {
     "in_trade": false,
