@@ -2,7 +2,7 @@ name: 5M Telegram Alert Scanner
 
 on:
   schedule:
-    # Daily wake-up call at 3:40 AM UTC (9:10 AM IST), Monday to Friday
+    # Starts automatically at 3:40 AM UTC (9:10 AM IST), Monday to Friday
     - cron: '40 3 * * 1-5'
   workflow_dispatch:
 
@@ -12,7 +12,7 @@ permissions:
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 hours runner limit
+    timeout-minutes: 370 # Stays alive for full 6-hour trading session
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -26,15 +26,15 @@ jobs:
         run: |
           pip install yfinance pandas numpy pytz requests
 
-      - name: Run Live Intraday Scanner Session
+      - name: Run Live Continuous Market Scanner
         run: |
           python bot.py
 
-      - name: Commit Final Day State
+      - name: Save Final Session Trailing State
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add trade_state.json || true
-          git diff --staged --quiet || git commit -m "Save final session state [skip ci]"
+          git diff --staged --quiet || git commit -m "Save active state at session end [skip ci]"
           git push || true
