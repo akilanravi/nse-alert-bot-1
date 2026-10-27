@@ -40,12 +40,12 @@ jobs:
         run: |
           python bot.py --group ${{ matrix.group }}
 
-      - name: Save Partitioned Trailing State
+      - name: Save Partitioned Trailing States
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main || true
-          git add trade_state_${{ matrix.group }}.json || true
-          git diff --staged --quiet || git commit -m "Save state for ${{ matrix.group }} [skip ci]"
+          git add trade_state_s1_${{ matrix.group }}.json trade_state_s2_${{ matrix.group }}.json || true
+          git diff --staged --quiet || git commit -m "Save dual states for ${{ matrix.group }} [skip ci]"
           git push || true
