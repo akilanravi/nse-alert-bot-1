@@ -9,6 +9,14 @@ import pytz
 import requests
 import yfinance as yf
 
+# ---------------------------------------------------------------------
+# Prevent yfinance multi-thread SQLite "database is locked" errors
+# ---------------------------------------------------------------------
+try:
+    yf.set_tz_cache_location("/tmp/yf_tz_cache")
+except Exception:
+    pass
+
 # =====================================================================
 # 1. DUAL TELEGRAM RECIPIENTS
 # =====================================================================
@@ -24,7 +32,7 @@ TELEGRAM_RECIPIENTS = [
 ]
 
 # =====================================================================
-# 2. WATCHLIST & STRIKE INTERVALS (CLEANED 100% WORKING NSE TICKERS)
+# 2. WATCHLIST & STRIKE INTERVALS (CLEANED 100% VALID TICKERS)
 # =====================================================================
 STRIKE_STEPS = {
     # Benchmark Indices
@@ -208,7 +216,7 @@ def calculate_supertrend(df, period=10, multiplier=3.0):
 
 def get_daily_pivots_bulk(tickers):
     try:
-        data = yf.download(tickers, period="5d", interval="1d", progress=False, group_by="ticker", threads=True)
+        data = yf.download(tickers, period="5d", interval="1d", progress=False, group_by="ticker", threads=False)
         pivots = {}
         for t in tickers:
             try:
@@ -243,7 +251,7 @@ def run_scan():
     pivots_map = get_daily_pivots_bulk(WATCHLIST)
 
     try:
-        intraday_data = yf.download(WATCHLIST, period="3d", interval=TIMEFRAME, progress=False, group_by="ticker", threads=True)
+        intraday_data = yf.download(WATCHLIST, period="3d", interval=TIMEFRAME, progress=False, group_by="ticker", threads=False)
     except Exception as e:
         print(f"Data download error: {e}")
         return
