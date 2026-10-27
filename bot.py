@@ -24,7 +24,7 @@ TELEGRAM_RECIPIENTS = [
 ]
 
 # =====================================================================
-# 2. WATCHLIST & STRIKE INTERVALS (CLEANED YAHOO FINANCE NSE TICKERS)
+# 2. WATCHLIST & STRIKE INTERVALS (CLEANED 100% WORKING NSE TICKERS)
 # =====================================================================
 STRIKE_STEPS = {
     # Benchmark Indices
@@ -68,7 +68,7 @@ STRIKE_STEPS = {
     # FMCG & Consumption
     "HINDUNILVR.NS": 20, "ITC.NS": 5, "NESTLEIND.NS": 20, "BRITANNIA.NS": 50,
     "TATACONSUM.NS": 10, "DABUR.NS": 5, "MARICO.NS": 5, "COLPAL.NS": 25,
-    "GODREJCP.NS": 10, 
+    "GODREJCP.NS": 10,
 
     # Telecom, Media & Retail
     "BHARTIARTL.NS": 10, "TRENT.NS": 50, "TITAN.NS": 50, "ASIANPAINT.NS": 20,
@@ -284,7 +284,6 @@ def run_scan():
                 .replace("^NSEI", "NIFTY 50")
                 .replace("^NSEBANK", "BANK NIFTY")
                 .replace("^BSESN", "SENSEX")
-                .replace("MCDOWELL-N", "MCDOWELL / UNITED SPIRITS")
             )
 
             pos = state.get(ticker, get_default_item_state())
