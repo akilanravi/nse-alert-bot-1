@@ -2,7 +2,7 @@ name: 5M Telegram Alert Scanner
 
 on:
   schedule:
-    # 4:00 AM - 9:45 AM UTC = 9:30 AM - 3:15 PM IST (Mon-Fri)
+    # Runs every 5 minutes from 4:00 AM to 9:45 AM UTC (9:30 AM to 3:15 PM IST), Monday to Friday
     - cron: '*/5 4-9 * * 1-5'
   workflow_dispatch:
 
@@ -25,7 +25,7 @@ jobs:
         run: |
           pip install yfinance pandas numpy pytz requests
 
-      - name: Run Alert Check with Trailing SL
+      - name: Run Alert Check
         run: |
           python bot.py
 
