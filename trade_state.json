@@ -143,8 +143,8 @@
     "in_trade": true,
     "trade_type": "CALL",
     "entry_price": 11387.0,
-    "extreme_price": 11399.0,
-    "trailing_sl": 11337.32,
+    "extreme_price": 11441.0,
+    "trailing_sl": 11391.32,
     "trail_buffer": 49.68,
     "atm_strike": 11400,
     "itm_strike": 11300
@@ -533,21 +533,21 @@
     "in_trade": true,
     "trade_type": "CALL",
     "entry_price": 10331.0,
-    "extreme_price": 10338.0,
-    "trailing_sl": 10293.57,
+    "extreme_price": 10346.0,
+    "trailing_sl": 10308.57,
     "trail_buffer": 37.43,
     "atm_strike": 10300,
     "itm_strike": 10200
   },
   "EICHERMOT.NS": {
-    "in_trade": false,
-    "trade_type": "",
-    "entry_price": 0.0,
-    "extreme_price": 0.0,
-    "trailing_sl": 0.0,
-    "trail_buffer": 0.0,
-    "atm_strike": 0,
-    "itm_strike": 0
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 7151.0,
+    "extreme_price": 7154.0,
+    "trailing_sl": 7135.63,
+    "trail_buffer": 15.37,
+    "atm_strike": 7150,
+    "itm_strike": 7100
   },
   "HEROMOTOCO.NS": {
     "in_trade": false,
@@ -573,8 +573,8 @@
     "in_trade": true,
     "trade_type": "CALL",
     "entry_price": 1776.199951171875,
-    "extreme_price": 1778.5,
-    "trailing_sl": 1773.53,
+    "extreme_price": 1787.800048828125,
+    "trailing_sl": 1782.83,
     "trail_buffer": 4.97,
     "atm_strike": 1780,
     "itm_strike": 1760
@@ -713,8 +713,8 @@
     "in_trade": true,
     "trade_type": "CALL",
     "entry_price": 1318.800048828125,
-    "extreme_price": 1319.199951171875,
-    "trailing_sl": 1314.61,
+    "extreme_price": 1320.0,
+    "trailing_sl": 1315.81,
     "trail_buffer": 4.19,
     "atm_strike": 1300,
     "itm_strike": 1250
@@ -980,14 +980,14 @@
     "itm_strike": 0
   },
   "JUBLFOOD.NS": {
-    "in_trade": false,
-    "trade_type": "",
-    "entry_price": 0.0,
-    "extreme_price": 0.0,
-    "trailing_sl": 0.0,
-    "trail_buffer": 0.0,
-    "atm_strike": 0,
-    "itm_strike": 0
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 425.1000061035156,
+    "extreme_price": 425.1000061035156,
+    "trailing_sl": 423.94,
+    "trail_buffer": 1.16,
+    "atm_strike": 425,
+    "itm_strike": 420
   },
   "SIEMENS.NS": {
     "in_trade": false,
@@ -1113,8 +1113,8 @@
     "in_trade": true,
     "trade_type": "CALL",
     "entry_price": 23375.0,
-    "extreme_price": 23375.0,
-    "trailing_sl": 23297.22,
+    "extreme_price": 23420.0,
+    "trailing_sl": 23342.22,
     "trail_buffer": 77.78,
     "atm_strike": 23500,
     "itm_strike": 23250
