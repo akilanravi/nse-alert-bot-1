@@ -68,7 +68,7 @@ STRIKE_STEPS = {
     # FMCG & Consumption
     "HINDUNILVR.NS": 20, "ITC.NS": 5, "NESTLEIND.NS": 20, "BRITANNIA.NS": 50,
     "TATACONSUM.NS": 10, "DABUR.NS": 5, "MARICO.NS": 5, "COLPAL.NS": 25,
-    "GODREJCP.NS": 10, "MCDOWELL-N.NS": 20,
+    "GODREJCP.NS": 10, 
 
     # Telecom, Media & Retail
     "BHARTIARTL.NS": 10, "TRENT.NS": 50, "TITAN.NS": 50, "ASIANPAINT.NS": 20,
