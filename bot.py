@@ -24,7 +24,7 @@ TELEGRAM_RECIPIENTS = [
 ]
 
 # =====================================================================
-# 2. WATCHLIST & STRIKE INTERVALS (INDICES + TOP 100+ F&O STOCKS)
+# 2. WATCHLIST & STRIKE INTERVALS (CLEANED YAHOO FINANCE NSE TICKERS)
 # =====================================================================
 STRIKE_STEPS = {
     # Benchmark Indices
@@ -40,11 +40,10 @@ STRIKE_STEPS = {
     "PNB.NS": 1, "BANKBARODA.NS": 2.5, "CANBK.NS": 1, "CHOLAFIN.NS": 20,
     "SHRIRAMFIN.NS": 25, "MUTHOOTFIN.NS": 20, "M&MFIN.NS": 5, "PFC.NS": 5,
     "RECLTD.NS": 5, "SBICARD.NS": 10, "SBILIFE.NS": 20, "HDFCLIFE.NS": 10,
-    "ICICIPRULI.NS": 10,
 
     # IT & Technology
     "TCS.NS": 50, "INFY.NS": 20, "HCLTECH.NS": 20, "WIPRO.NS": 5,
-    "TECHM.NS": 20, "LTIM.NS": 50, "PERSISTENT.NS": 50, "COFORGE.NS": 50,
+    "TECHM.NS": 20, "PERSISTENT.NS": 50, "COFORGE.NS": 50,
     "MPHASIS.NS": 25, "NAUKRI.NS": 50,
 
     # Oil, Gas & Energy
@@ -53,7 +52,7 @@ STRIKE_STEPS = {
     "ADANIENT.NS": 50, "ADANIPORTS.NS": 20, "COALINDIA.NS": 5,
 
     # Auto & Ancillaries
-    "TATAMOTORS.NS": 10, "MARUTI.NS": 100, "M&M.NS": 20, "BAJAJ-AUTO.NS": 100,
+    "MARUTI.NS": 100, "M&M.NS": 20, "BAJAJ-AUTO.NS": 100,
     "EICHERMOT.NS": 50, "HEROMOTOCO.NS": 50, "TVSMOTOR.NS": 25, "BHARATFORG.NS": 20,
     "ASHOKLEY.NS": 2.5, "MRF.NS": 500, "BALKRISIND.NS": 50, "APOLLOTYRE.NS": 5,
 
@@ -69,7 +68,7 @@ STRIKE_STEPS = {
     # FMCG & Consumption
     "HINDUNILVR.NS": 20, "ITC.NS": 5, "NESTLEIND.NS": 20, "BRITANNIA.NS": 50,
     "TATACONSUM.NS": 10, "DABUR.NS": 5, "MARICO.NS": 5, "COLPAL.NS": 25,
-    "GODREJCP.NS": 10, "UNITEDSPR.NS": 20,
+    "GODREJCP.NS": 10, "MCDOWELL-N.NS": 20,
 
     # Telecom, Media & Retail
     "BHARTIARTL.NS": 10, "TRENT.NS": 50, "TITAN.NS": 50, "ASIANPAINT.NS": 20,
@@ -97,7 +96,7 @@ STATE_FILE = "trade_state.json"
 def get_default_item_state():
     return {
         "in_trade": False,
-        "pending_stage": None, # None, "PENDING_CALL", "PENDING_PUT"
+        "pending_stage": None,  # None, "PENDING_CALL", "PENDING_PUT"
         "trade_type": "",
         "entry_price": 0.0,
         "extreme_price": 0.0,
@@ -239,7 +238,7 @@ def run_scan():
         print("Outside active trading window (9:15 AM - 3:30 PM IST).")
         return
 
-    print(f"Scanning {len(WATCHLIST)} Instruments for 2-Candle Confirmations...")
+    print(f"Scanning {len(WATCHLIST)} Option Instruments (Indices & Top F&O Equities)...")
     state = load_state()
     pivots_map = get_daily_pivots_bulk(WATCHLIST)
 
@@ -280,7 +279,13 @@ def run_scan():
             rsi_prev = float(rsi_series.iloc[-2])
 
             step = STRIKE_STEPS.get(ticker, 50)
-            name = ticker.replace(".NS", "").replace("^NSEI", "NIFTY 50").replace("^NSEBANK", "BANK NIFTY").replace("^BSESN", "SENSEX")
+            name = (
+                ticker.replace(".NS", "")
+                .replace("^NSEI", "NIFTY 50")
+                .replace("^NSEBANK", "BANK NIFTY")
+                .replace("^BSESN", "SENSEX")
+                .replace("MCDOWELL-N", "MCDOWELL / UNITED SPIRITS")
+            )
 
             pos = state.get(ticker, get_default_item_state())
 
@@ -348,7 +353,7 @@ def run_scan():
                         pos["pending_stage"] = None
 
             # -------------------------------------------------------------
-            # B. 2-CANDLE ENTRY LOGIC (CANDLE 1 ALERT -> CANDLE 2 TRIGGER)
+            # B. 2-CANDLE ENTRY LOGIC (CANDLE 1 ALERT -> CANDLE 2 CONFIRM)
             # -------------------------------------------------------------
             else:
                 is_green = curr_close > curr_open
@@ -357,10 +362,9 @@ def run_scan():
                 call_condition = (curr_close > float(st1_val.iloc[-1])) and st1_bull and (curr_close > m3_upper) and (rsi_prev > 60.0) and is_green
                 put_condition = (curr_close < float(st1_val.iloc[-1])) and st1_bear and (curr_close < m2_lower) and (rsi_prev < 40.0) and is_red
 
-                # --- Scenario 1: Currently Waiting for 2nd Candle confirmation ---
+                # --- 2nd Candle Evaluation ---
                 if pos.get("pending_stage") == "PENDING_CALL":
                     if call_condition:
-                        # 2nd consecutive green candle satisfied! Trigger Full Entry
                         atm_ce, itm_ce = get_options_strikes(curr_close, step, direction="CALL")
                         initial_sl = round(curr_close - trail_buffer, 2)
 
@@ -390,12 +394,10 @@ def run_scan():
                         )
                         send_telegram(msg)
                     else:
-                        # 2nd candle failed to confirm - cancel pending state
                         pos["pending_stage"] = None
 
                 elif pos.get("pending_stage") == "PENDING_PUT":
                     if put_condition:
-                        # 2nd consecutive red candle satisfied! Trigger Full Entry
                         atm_pe, itm_pe = get_options_strikes(curr_close, step, direction="PUT")
                         initial_sl = round(curr_close + trail_buffer, 2)
 
@@ -425,10 +427,9 @@ def run_scan():
                         )
                         send_telegram(msg)
                     else:
-                        # 2nd candle failed to confirm - cancel pending state
                         pos["pending_stage"] = None
 
-                # --- Scenario 2: Fresh Setup Detected on 1st Candle ---
+                # --- 1st Candle Setup Detected ---
                 else:
                     if call_condition:
                         pos["pending_stage"] = "PENDING_CALL"
@@ -459,7 +460,7 @@ def run_scan():
     save_state(state)
 
 # =====================================================================
-# 6. SESSION RUNNER
+# 6. INTRADAY SESSION RUNNER
 # =====================================================================
 def run_continuous_session():
     ist = pytz.timezone("Asia/Kolkata")
