@@ -530,14 +530,14 @@
     "itm_strike": 0
   },
   "BAJAJ-AUTO.NS": {
-    "in_trade": false,
-    "trade_type": "",
-    "entry_price": 0.0,
-    "extreme_price": 0.0,
-    "trailing_sl": 0.0,
-    "trail_buffer": 0.0,
-    "atm_strike": 0,
-    "itm_strike": 0
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 10331.0,
+    "extreme_price": 10338.0,
+    "trailing_sl": 10293.57,
+    "trail_buffer": 37.43,
+    "atm_strike": 10300,
+    "itm_strike": 10200
   },
   "EICHERMOT.NS": {
     "in_trade": false,
@@ -570,14 +570,14 @@
     "itm_strike": 0
   },
   "BHARATFORG.NS": {
-    "in_trade": false,
-    "trade_type": "",
-    "entry_price": 0.0,
-    "extreme_price": 0.0,
-    "trailing_sl": 0.0,
-    "trail_buffer": 0.0,
-    "atm_strike": 0,
-    "itm_strike": 0
+    "in_trade": true,
+    "trade_type": "CALL",
+    "entry_price": 1776.199951171875,
+    "extreme_price": 1776.199951171875,
+    "trailing_sl": 1771.23,
+    "trail_buffer": 4.97,
+    "atm_strike": 1780,
+    "itm_strike": 1760
   },
   "ASHOKLEY.NS": {
     "in_trade": false,
