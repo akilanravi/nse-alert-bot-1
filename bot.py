@@ -1,20 +1,3 @@
-File "/home/runner/work/nse-alert-bot-1/nse-alert-bot-1/bot.py", line 1
-    direction = pd.Series(0, index=df.index, dtype=int)
-IndentationError: unexpected indent
-```[span_3](start_span)[span_3](end_span)
-
-When pasting into `bot.py`, the top lines of the file were clipped, causing line 1 to start with a stranded, indented line (`direction = pd.Series...`) instead of the required `import` statements[span_4](start_span)[span_4](end_span).
-
----
-
-### How to Fix `bot.py`
-
-1. Go to your repository on **[GitHub.com](https://github.com)**.
-2. Click on **`bot.py`** $\rightarrow$ click the **Pencil icon** (Edit this file).
-3. Select **all contents** (`Ctrl+A` or `Cmd+A`) and **delete everything**.
-4. Paste this clean, complete code from start to finish:
-
-```python
 import datetime
 import json
 import math
@@ -147,7 +130,7 @@ def send_telegram(text):
 def is_market_hours():
     ist = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.datetime.now(ist)
-    if now_ist.weekday() > 4:  # Closed Sat & Sun
+    if now_ist.weekday() > 4:
         return False
     market_start = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
     market_end = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
