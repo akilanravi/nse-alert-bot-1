@@ -10,35 +10,51 @@ import requests
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ==============================================================================
-# 0. CONFIGURATION & TELEGRAM
+# 1. DUAL TELEGRAM RECIPIENTS (TOKEN + CHAT ID PAIRS)
 # ==============================================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_RECIPIENTS = [
+    {
+        "token": "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k",
+        "chat_id": "846124589",
+    },
+    {
+        "token": "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms",
+        "chat_id": "8865083462",
+    },
+]
+
 LOG_FILE = "trade_log.csv"
 
 
 def send_telegram_alert(message: str):
-    """Dispatches HTML-formatted alert to Telegram."""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        logging.warning("Telegram credentials not configured. Printing message to stdout:\n" + message)
+    """Dispatches HTML-formatted alerts to each configured bot token & chat_id pair."""
+    if not TELEGRAM_RECIPIENTS:
+        logging.warning("No Telegram recipients configured. Message:\n" + message)
         return
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }
-    try:
-        resp = requests.post(url, json=payload, timeout=10)
-        resp.raise_for_status()
-    except Exception as e:
-        logging.error(f"Failed to dispatch Telegram alert: {e}")
+    for item in TELEGRAM_RECIPIENTS:
+        token = item.get("token")
+        chat_id = item.get("chat_id")
+        if not token or not chat_id:
+            continue
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            logging.info(f"Alert sent successfully to chat_id: {chat_id}")
+        except Exception as e:
+            logging.error(f"Failed to dispatch Telegram alert to {chat_id}: {e}")
 
 
 # ==============================================================================
-# 1. TECHNICAL INDICATORS
+# 2. TECHNICAL INDICATORS
 # ==============================================================================
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     tr = pd.concat([
@@ -79,7 +95,6 @@ def calculate_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float =
 
 
 def calculate_vwap(df: pd.DataFrame) -> pd.Series:
-    """Calculates Intraday Session VWAP."""
     typical_price = (df["high"] + df["low"] + df["close"]) / 3.0
     cum_vol_price = (typical_price * df["volume"]).cumsum()
     cum_vol = df["volume"].cumsum()
@@ -91,10 +106,10 @@ def calculate_ema(series: pd.Series, span: int) -> pd.Series:
 
 
 # ==============================================================================
-# 2. STRATEGY ENGINES (S1, S2, S3, S4)
+# 3. STRATEGY ENGINES (S1, S2, S3, S4 - ALL WITH CE & PE)
 # ==============================================================================
 def evaluate_strategy_1(df: pd.DataFrame) -> dict:
-    """Strategy 1: Momentum Breakout (Supertrend + RSI confirmation with ATR buffer)."""
+    """Strategy 1: Momentum Breakout (Supertrend + RSI confirmation)."""
     if len(df) < 20:
         return {"signal": None}
     df = df.copy()
@@ -106,7 +121,7 @@ def evaluate_strategy_1(df: pd.DataFrame) -> dict:
     prev = df.iloc[-2]
     atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
 
-    # Bullish Momentum
+    # Bullish CE
     if curr["supertrend"] == 1 and prev["supertrend"] == -1 and curr["rsi"] >= 55:
         sl = round(curr["low"] - (0.8 * atr_val), 2)
         risk = curr["close"] - sl
@@ -121,7 +136,7 @@ def evaluate_strategy_1(df: pd.DataFrame) -> dict:
                 "notes": f"Supertrend Bullish Flip | RSI: {round(curr['rsi'], 1)}",
             }
 
-    # Bearish Momentum
+    # Bearish PE
     if curr["supertrend"] == -1 and prev["supertrend"] == 1 and curr["rsi"] <= 45:
         sl = round(curr["high"] + (0.8 * atr_val), 2)
         risk = sl - curr["close"]
@@ -178,7 +193,7 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
     atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
     vol_confirmed = curr["volume"] >= (curr["vol_ma"] * 1.05)
 
-    # Bearish Sweep: Breaks PDH and closes back inside
+    # Bearish Sweep (PE): Sweeps PDH and closes back below
     if curr["high"] > pdh and curr["close"] < pdh and vol_confirmed:
         upper_wick = curr["high"] - max(curr["open"], curr["close"])
         body = abs(curr["close"] - curr["open"])
@@ -196,7 +211,7 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
                     "notes": f"PDH Sweep & Reversal (PDH: ₹{pdh})",
                 }
 
-    # Bullish Sweep: Breaks PDL and closes back inside
+    # Bullish Sweep (CE): Sweeps PDL and closes back above
     if curr["low"] < pdl and curr["close"] > pdl and vol_confirmed:
         lower_wick = min(curr["open"], curr["close"]) - curr["low"]
         body = abs(curr["close"] - curr["open"])
@@ -217,11 +232,7 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
 
 
 def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) -> dict:
-    """
-    Strategy 4: Intraday Indian F&O CALL/PUT Framework (Pure Technical Triggers)
-    - Setup A: Breakout & Retest (5m breakout, 1-6 candle retest holding)
-    - Setup B: Trend Pullback (15m trend + VWAP, 5m EMA 9/21, RSI turn)
-    """
+    """Strategy 4: Intraday Indian F&O Framework (Setup A Breakout/Retest & Setup B Pullback)."""
     if len(df_5m) < 25 or len(df_15m) < 20:
         return {"signal": None}
 
@@ -245,7 +256,6 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
     curr = df_5.iloc[-1]
     prev = df_5.iloc[-2]
 
-    # Level Calculation: Recent 20-bar resistance and support
     range_high = df_5["high"].iloc[-21:-1].max()
     range_low = df_5["low"].iloc[-21:-1].min()
 
@@ -268,13 +278,13 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                         "signal": "BUY / CE",
                         "entry": round(curr["close"], 2),
                         "sl": sl,
-                        "tp1": round(curr["close"] + (1.0 * risk), 2),  # 1R target
-                        "tp2": round(curr["close"] + (2.0 * risk), 2),  # 2R target
+                        "tp1": round(curr["close"] + (1.0 * risk), 2),  # 1R target[cite: 3]
+                        "tp2": round(curr["close"] + (2.0 * risk), 2),  # 2R target[cite: 3]
                         "notes": f"5m Retest Confirmed @ ₹{range_high:.2f} | 15m VWAP Rising | Risk: {risk:.2f} pts",
                     }
 
     # ----------------------------------------------------
-    # SETUP A: BREAKOUT & RETEST (PE)
+    # SETUP A: BREAKDOWN & RETEST (PE)
     # ----------------------------------------------------
     if trend_15m_bearish and curr["close"] < curr["vwap"]:
         breakdown_candidates = [
@@ -347,43 +357,64 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
 
 
 # ==============================================================================
-# 3. UNIVERSE PARTITIONING (5 DISTINCT BLOCKS)
+# 4. 100+ STOCKS & INDICES UNIVERSE (5 BALANCED PARALLEL BLOCKS)
 # ==============================================================================
 WATCHLIST_BLOCKS = {
     1: {
-        "category": "INDEX",
-        "name": "Block 1: Major Indices",
-        "symbols": ["NIFTY 50", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY"],
+        "category": "INDEX & CORE FIN",
+        "name": "Block 1: Indices & Top Banking",
+        "symbols": [
+            "NIFTY 50", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY",
+            "HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK",
+            "INDUSINDBK", "BANKBARODA", "PNB", "AUBANK", "FEDERALBNK",
+            "BAJFINANCE", "BAJAJFINSV", "CHOLAFIN", "SHRIRAMFIN", "MUTHOOTFIN", "HDFCLIFE"
+        ],
     },
     2: {
-        "category": "STOCK",
-        "name": "Block 2: Banking & Financials",
-        "symbols": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "BAJFINANCE"],
+        "category": "TECH & CONSUMER",
+        "name": "Block 2: IT, Tech & Consumer Discretionary",
+        "symbols": [
+            "TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM", "PERSISTENT", "COFORGE", "MPHASIS",
+            "TITAN", "ASIANPAINT", "BERGEPAINT", "HAVANCE", "HAVELLS", "VOLTAS", "DIXON",
+            "POLYCAB", "BOSCHLTD", "TRENT", "PAGEIND"
+        ],
     },
     3: {
-        "category": "STOCK",
-        "name": "Block 3: IT & Tech Services",
-        "symbols": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM"],
+        "category": "AUTO & HEAVY ENG",
+        "name": "Block 3: Auto, Industrials & Capital Goods",
+        "symbols": [
+            "TATAMOTORS", "M&M", "MARUTI", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT", "TVSMOTOR",
+            "BHARATFORG", "ASHOKLEY", "LT", "SIEMENS", "ABB", "HAL", "BEL", "BHEL",
+            "CUMMINSIND", "ASTRAL", "SUPREMEIND", "ESCORTS", "PIIND"
+        ],
     },
     4: {
-        "category": "STOCK",
-        "name": "Block 4: Energy, Autos & Infra",
-        "symbols": ["RELIANCE", "TATAMOTORS", "M&M", "MARUTI", "LT", "NTPC"],
+        "category": "ENERGY & COMMODITIES",
+        "name": "Block 4: Oil/Gas, Power & Metals",
+        "symbols": [
+            "RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "POWERGRID", "NTPC", "TATAPOWER", "ADANIENT", "ADANIPORTS",
+            "TATASTEEL", "HINDALCO", "JSWSTEEL", "JINDALSTEL", "VEDL", "COALINDIA", "NMDC", "NATIONALUM",
+            "SAIL", "PETRONET"
+        ],
     },
     5: {
-        "category": "STOCK",
-        "name": "Block 5: Metals, Pharma & FMCG",
-        "symbols": ["TATASTEEL", "HINDALCO", "SUNPHARMA", "CIPLA", "ITC", "HINDUNILVR"],
+        "category": "PHARMA & FMCG",
+        "name": "Block 5: Pharma, Healthcare, FMCG & Chemicals",
+        "symbols": [
+            "SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "LUPIN", "APOLLOHOSP", "MAXHEALTH", "MANAPPURAM",
+            "AUROPHARMA", "BIOCON", "ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "TATACONSUM", "DABUR",
+            "GODREJCP", "MARICO", "COLPAL", "SRF"
+        ],
     },
 }
 
 
 # ==============================================================================
-# 4. LOGGING & TELEGRAM FORMATTING
+# 5. ALERT FORMATTING & LOGGING
 # ==============================================================================
 def format_alert_message(symbol: str, category: str, result: dict) -> str:
     direction_emoji = "🟢" if "BUY" in result["signal"] else "🔴"
-    header_tag = "📊 <b>[INDEX ALERT]</b>" if category == "INDEX" else "📈 <b>[EQUITY ALERT]</b>"
+    header_tag = "📊 <b>[INDEX ALERT]</b>" if "INDEX" in category else "📈 <b>[EQUITY F&O ALERT]</b>"
 
     return (
         f"{header_tag}\n"
@@ -443,7 +474,7 @@ def record_trade_entry(symbol: str, category: str, setup: dict):
 
 
 def generate_eod_summary(get_market_data_func) -> str:
-    """Evaluates all trades taken today and sends a consolidated report after 3:15 PM."""
+    """Consolidated summary sent to both Telegram recipients at 3:15 PM."""
     if not os.path.isfile(LOG_FILE):
         return "⚠️ <b>[EOD REPORT]</b> No trade log found for today."
 
@@ -488,7 +519,6 @@ def generate_eod_summary(get_market_data_func) -> str:
         day_low = df_15m["low"].min()
         close_315 = df_15m["close"].iloc[-1]
 
-        # Calculate outcomes
         if "BUY" in signal or "CE" in signal:
             if day_low <= sl:
                 pnl_pts = sl - entry
@@ -500,7 +530,7 @@ def generate_eod_summary(get_market_data_func) -> str:
             else:
                 pnl_pts = close_315 - entry
                 status = "⚪ Mkt Close"
-        else:  # SELL / PE
+        else:
             if day_high >= sl:
                 pnl_pts = entry - sl
                 status = "🔴 SL Hit"
@@ -559,17 +589,13 @@ def generate_eod_summary(get_market_data_func) -> str:
 
 
 # ==============================================================================
-# 5. SCANNER RUNNER & CLI DISPATCH
+# 6. SCANNER EXECUTION
 # ==============================================================================
 def fetch_mock_data(symbol: str):
-    """
-    Market data fetcher generating both 15m and 5m candles.
-    Replace this with Kite Connect kite.historical_data().
-    """
+    """Generates aligned 15m and 5m market data. Replace with your live broker API feed."""
     np.random.seed(abs(hash(symbol)) % 10000)
     base_price = 2500 if "NIFTY" not in symbol else 24000
 
-    # 15-minute timeframe
     dates_15m = pd.date_range(end=pd.Timestamp.now(), periods=50, freq="15min")
     prices_15m = base_price + np.cumsum(np.random.randn(50) * 10)
     df_15m = pd.DataFrame({
@@ -580,7 +606,6 @@ def fetch_mock_data(symbol: str):
         "volume": np.random.randint(5000, 50000, size=50),
     }, index=dates_15m)
 
-    # 5-minute timeframe
     dates_5m = pd.date_range(end=pd.Timestamp.now(), periods=60, freq="5min")
     prices_5m = base_price + np.cumsum(np.random.randn(60) * 5)
     df_5m = pd.DataFrame({
@@ -605,34 +630,34 @@ def scan_block(block_id: int):
 
     block_data = WATCHLIST_BLOCKS[block_id]
     category = block_data["category"]
-    logging.info(f"Scanning {block_data['name']} (Type: {category})...")
+    logging.info(f"Scanning {block_data['name']} ({len(block_data['symbols'])} symbols)...")
 
     for symbol in block_data["symbols"]:
         try:
             df_15m, df_5m, pdh, pdl, pivot = fetch_mock_data(symbol)
 
-            # Strategy 4 (Intraday Indian F&O Framework)
+            # Strategy 4: Intraday CALL/PUT Framework
             res_s4 = evaluate_strategy_4(symbol, df_5m, df_15m)
             if res_s4["signal"]:
                 send_telegram_alert(format_alert_message(symbol, category, res_s4))
                 record_trade_entry(symbol, category, res_s4)
                 continue
 
-            # Strategy 3 (Liquidity Trap)
+            # Strategy 3: Daily Level Trap & Sweeps
             res_s3 = evaluate_strategy_3(df_15m, pdh, pdl)
             if res_s3["signal"]:
                 send_telegram_alert(format_alert_message(symbol, category, res_s3))
                 record_trade_entry(symbol, category, res_s3)
                 continue
 
-            # Strategy 2 (Pivot Pullback)
+            # Strategy 2: Pivot Pullback
             res_s2 = evaluate_strategy_2(df_15m, pivot)
             if res_s2["signal"]:
                 send_telegram_alert(format_alert_message(symbol, category, res_s2))
                 record_trade_entry(symbol, category, res_s2)
                 continue
 
-            # Strategy 1 (Momentum Breakout)
+            # Strategy 1: Momentum Breakout
             res_s1 = evaluate_strategy_1(df_15m)
             if res_s1["signal"]:
                 send_telegram_alert(format_alert_message(symbol, category, res_s1))
