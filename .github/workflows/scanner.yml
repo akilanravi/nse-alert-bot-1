@@ -34,9 +34,6 @@ jobs:
         run: pip install pandas numpy requests
 
       - name: Run Block Scanner
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py ${{ matrix.block_id }}
 
       - name: Persist Trade Logs to GitHub
@@ -54,7 +51,7 @@ jobs:
     # Runs at 3:15 PM IST (09:45 UTC)
     if: github.event.schedule == '45 9 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [] # Runs independently
+    needs: []
 
     steps:
       - name: Checkout Repository
@@ -69,7 +66,4 @@ jobs:
         run: pip install pandas numpy requests
 
       - name: Run 3:15 PM EOD Telegram Report
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py --eod
