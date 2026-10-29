@@ -278,8 +278,8 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                         "signal": "BUY / CE",
                         "entry": round(curr["close"], 2),
                         "sl": sl,
-                        "tp1": round(curr["close"] + (1.0 * risk), 2),  # 1R target[cite: 3]
-                        "tp2": round(curr["close"] + (2.0 * risk), 2),  # 2R target[cite: 3]
+                        "tp1": round(curr["close"] + (1.0 * risk), 2),
+                        "tp2": round(curr["close"] + (2.0 * risk), 2),
                         "notes": f"5m Retest Confirmed @ ₹{range_high:.2f} | 15m VWAP Rising | Risk: {risk:.2f} pts",
                     }
 
@@ -668,10 +668,20 @@ def scan_block(block_id: int):
             logging.error(f"Error checking {symbol}: {e}")
 
 
+def scan_all_blocks():
+    """Scans all 5 watchlist blocks sequentially."""
+    for block_id in sorted(WATCHLIST_BLOCKS.keys()):
+        scan_block(block_id)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--eod":
         summary_msg = generate_eod_summary(fetch_mock_data)
         send_telegram_alert(summary_msg)
-    else:
-        target_block = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    elif len(sys.argv) > 1 and sys.argv[1] == "--all":
+        scan_all_blocks()
+    elif len(sys.argv) > 1 and sys.argv[1].isdigit():
+        target_block = int(sys.argv[1])
         scan_block(target_block)
+    else:
+        scan_all_blocks()
