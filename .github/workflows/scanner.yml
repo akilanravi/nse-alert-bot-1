@@ -1,25 +1,19 @@
-name: Multi-Strategy Trading Bot
+name: Multi-Strategy Continuous Trading Bot
 
 on:
   schedule:
-    # 03:45 UTC = 09:15 AM IST (First market check)
+    # 03:45 UTC = 09:15 AM IST (Starts at market open Mon-Fri)
     - cron: '45 3 * * 1-5'
-    # 04:00 UTC to 08:45 UTC = 09:30 AM to 02:15 PM IST (Every 15 min, Mon-Fri)
-    - cron: '*/15 4-8 * * 1-5'
-    # 09:00, 09:15, 09:30 UTC = 02:30 PM, 02:45 PM, 03:00 PM IST
-    - cron: '0,15,30 9 * * 1-5'
-    # 09:45 UTC = 03:15 PM IST (Runs the End-of-Day reconciliation report)
-    - cron: '45 9 * * 1-5'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  scan-market:
-    # Run scan for regular checks (skip at 09:45 UTC unless manually triggered)
-    if: github.event.schedule != '45 9 * * 1-5' || github.event_name == 'workflow_dispatch'
+  run-trading-session:
     runs-on: ubuntu-latest
+    # Keep the VM alive for the entire 6-hour trading session (09:15 AM to 03:30 PM IST)
+    timeout-minutes: 375
 
     steps:
       - name: Checkout Repository
@@ -31,40 +25,19 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install pandas numpy requests
+        run: pip install pandas numpy requests pytz
 
-      # Runs all sector blocks sequentially to eliminate Git push conflicts
-      - name: Run Full Watchlist Scanner
-        run: python bot.py --all
+      - name: Run Continuous Trading Bot (9:15 AM - 3:15 PM IST)
+        run: python bot.py --live
 
-      - name: Persist Trade Logs to GitHub
+      - name: Persist Final Trade Logs to GitHub
+        if: always()
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
           git pull origin main --rebase || true
           if [ -f trade_log.csv ]; then
             git add trade_log.csv
-            git commit -m "Auto-update trade_log.csv [skip ci]" || echo "No new trades to commit"
+            git commit -m "EOD trade log update [skip ci]" || echo "No trades to commit"
             git push origin main || true
           fi
-
-  eod-summary:
-    # Runs at 3:15 PM IST (09:45 UTC) or when manually dispatched
-    if: github.event.schedule == '45 9 * * 1-5' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    needs: []
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Dependencies
-        run: pip install pandas numpy requests
-
-      - name: Run 3:15 PM EOD Telegram Report
-        run: python bot.py --eod
