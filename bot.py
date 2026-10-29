@@ -1,7 +1,6 @@
 import csv
 import logging
 import os
-import sys
 import time
 from datetime import datetime
 import numpy as np
@@ -392,7 +391,7 @@ WATCHLIST_BLOCKS = {
 
 
 # ==============================================================================
-# 5. ALERT FORMATTING & CACHED TRADE ENTRY
+# 5. ALERT FORMATTING & CACHED ENTRY
 # ==============================================================================
 def format_alert_message(symbol: str, category: str, result: dict) -> str:
     direction_emoji = "🟢" if "BUY" in result["signal"] else "🔴"
@@ -417,7 +416,7 @@ def format_alert_message(symbol: str, category: str, result: dict) -> str:
 sent_alerts_cache = set()
 
 def record_trade_entry(symbol: str, category: str, setup: dict) -> bool:
-    """Logs the entry details to trade_log.csv and prevents duplicate alert spam."""
+    """Logs the entry details and prevents repeated spam within the day."""
     file_exists = os.path.isfile(LOG_FILE)
     today_str = datetime.now().strftime("%Y-%m-%d")
 
@@ -465,7 +464,7 @@ def record_trade_entry(symbol: str, category: str, setup: dict) -> bool:
 
 
 # ==============================================================================
-# 6. CONTINUOUS REAL-TIME SCANNER (NO 15-MIN SLEEP, NO EOD REPORT)
+# 6. NON-STOP REAL-TIME LOOP
 # ==============================================================================
 def fetch_mock_data(symbol: str):
     np.random.seed(abs(hash(symbol) + int(time.time() // 30)) % 10000)
@@ -501,28 +500,24 @@ def scan_single_symbol(symbol: str, category: str):
     try:
         df_15m, df_5m, pdh, pdl, pivot = fetch_mock_data(symbol)
 
-        # Strategy 4: Intraday CALL/PUT Framework
         res_s4 = evaluate_strategy_4(symbol, df_5m, df_15m)
         if res_s4["signal"]:
             if record_trade_entry(symbol, category, res_s4):
                 send_telegram_alert(format_alert_message(symbol, category, res_s4))
             return
 
-        # Strategy 3: Daily Level Trap & Sweeps
         res_s3 = evaluate_strategy_3(df_15m, pdh, pdl)
         if res_s3["signal"]:
             if record_trade_entry(symbol, category, res_s3):
                 send_telegram_alert(format_alert_message(symbol, category, res_s3))
             return
 
-        # Strategy 2: Pivot Pullback
         res_s2 = evaluate_strategy_2(df_15m, pivot)
         if res_s2["signal"]:
             if record_trade_entry(symbol, category, res_s2):
                 send_telegram_alert(format_alert_message(symbol, category, res_s2))
             return
 
-        # Strategy 1: Momentum Breakout
         res_s1 = evaluate_strategy_1(df_15m)
         if res_s1["signal"]:
             if record_trade_entry(symbol, category, res_s1):
@@ -544,33 +539,75 @@ def scan_all_blocks():
 def run_continuous_live():
     """Continuously cycles through all instruments non-stop between 09:15 AM and 03:15 PM IST."""
     ist = pytz.timezone("Asia/Kolkata")
-    logging.info("Starting REAL-TIME continuous scanning loop (09:15 AM to 03:15 PM IST)...")
-    
+    logging.info("Starting NON-STOP continuous scan (09:15 AM to 03:15 PM IST)...")
+
     market_open = (9, 15)
     market_close = (15, 15)
 
     while True:
         now_ist = datetime.now(ist)
         current_time = (now_ist.hour, now_ist.minute)
-        weekday = now_ist.weekday()  # 0 = Monday, 4 = Friday
+        weekday = now_ist.weekday()
 
-        # Active trading hours: Monday - Friday between 09:15 and 15:15 IST
+        # Regular trading hours: Mon-Fri 09:15 to 15:15 IST
         if weekday < 5 and market_open <= current_time <= market_close:
             scan_all_blocks()
-            # 5-second buffer between full watchlist cycles to avoid CPU thrashing
+            # 5-second pause between cycles to prevent API/CPU locking
             time.sleep(5)
 
-        # Once 3:15 PM IST is reached, terminate session
+        # 3:15 PM reached: cleanly exit
         elif weekday < 5 and current_time > market_close:
-            logging.info("Market reached 03:15 PM IST. Trading session finished. Exiting.")
+            logging.info("3:15 PM IST reached. Trading session finished. Exiting.")
             break
 
-        # Outside regular trading hours (e.g. testing manual dispatch at night or on weekends)
+        # Outside hours / weekend: test cycle
         else:
-            logging.info("Outside trading hours (09:15 - 15:15 IST Mon-Fri). Performing one test cycle...")
+            logging.info("Outside trading hours. Running one test cycle...")
             scan_all_blocks()
             break
 
 
 if __name__ == "__main__":
     run_continuous_live()
+Scroll to the bottom, select Commit changes, and choose Commit directly to the main branch.Step 2: Update .github/workflows/scanner.yml Directly on GitHubNavigate to .github/workflows/scanner.yml on GitHub.com.   Click the pencil icon (Edit this file).Replace the entire content with this:YAMLname: Multi-Strategy Real-Time Trading Bot
+
+on:
+  schedule:
+    # 03:45 UTC = 09:15 AM IST (Starts at market open Mon-Fri)
+    - cron: '45 3 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  realtime-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 375
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install pandas numpy requests pytz
+
+      - name: Run Real-Time Scanner (Non-stop 9:15 AM - 3:15 PM IST)
+        run: python bot.py
+
+      - name: Persist Final Trade Logs to GitHub
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git pull origin main --rebase || true
+          if [ -f trade_log.csv ]; then
+            git add trade_log.csv
+            git commit -m "Trade log update [skip ci]" || echo "No trades to commit"
+            git push origin main || true
+          fi
