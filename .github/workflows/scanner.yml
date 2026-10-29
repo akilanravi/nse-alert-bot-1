@@ -1,4 +1,4 @@
-name: Multi-Strategy Continuous Trading Bot
+name: Multi-Strategy Real-Time Trading Bot
 
 on:
   schedule:
@@ -10,10 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  run-trading-session:
+  realtime-scanner:
     runs-on: ubuntu-latest
-    # Keep the VM alive for the entire 6-hour trading session (09:15 AM to 03:30 PM IST)
-    timeout-minutes: 375
+    timeout-minutes: 375 # Keeps runner alive for the full 6 hours (09:15 AM to 03:30 PM IST)
 
     steps:
       - name: Checkout Repository
@@ -27,8 +26,8 @@ jobs:
       - name: Install Dependencies
         run: pip install pandas numpy requests pytz
 
-      - name: Run Continuous Trading Bot (9:15 AM - 3:15 PM IST)
-        run: python bot.py --live
+      - name: Run Real-Time Scanner (Non-stop 9:15 AM - 3:15 PM IST)
+        run: python bot.py
 
       - name: Persist Final Trade Logs to GitHub
         if: always()
@@ -38,6 +37,6 @@ jobs:
           git pull origin main --rebase || true
           if [ -f trade_log.csv ]; then
             git add trade_log.csv
-            git commit -m "EOD trade log update [skip ci]" || echo "No trades to commit"
+            git commit -m "Trade log update [skip ci]" || echo "No trades to commit"
             git push origin main || true
           fi
