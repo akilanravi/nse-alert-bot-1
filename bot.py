@@ -228,10 +228,7 @@ def get_daily_context_bulk(tickers):
                 p = (h + l + c) / 3.0
                 r1 = (2.0 * p) - l
                 s1 = (2.0 * p) - h
-                m3_upper = (p + r1) / 2.0
-                m2_lower = (p + s1) / 2.0
-                ema20 = float(df_d["Close"].ewm(span=20, adjust=False).mean().iloc[-1])
-                context[t] = (m3_upper, m2_lower, r1, s1, ema20)
+                context[t] = (p, r1, s1)
             except Exception:
                 continue
         return context
@@ -270,7 +267,7 @@ def run_scan(group_name, strike_dict):
             if len(df) < 30 or ticker not in context_map:
                 continue
 
-            m3_upper, m2_lower, r1, s1, daily_ema20 = context_map[ticker]
+            pivot_p, r1, s1 = context_map[ticker]
             vwap_series = calculate_vwap(df)
             curr_vwap = float(vwap_series.iloc[-1])
             atr_series = calculate_atr(df, period=14)
@@ -294,6 +291,8 @@ def run_scan(group_name, strike_dict):
             st1_bear = st1_dir.iloc[-1] == -1
             st2_flipped_bear = (st2_dir.iloc[-1] == -1 and st2_dir.iloc[-2] == 1)
             st2_flipped_bull = (st2_dir.iloc[-1] == 1 and st2_dir.iloc[-2] == -1)
+
+            curr_rsi = float(rsi_series.iloc[-1])
             rsi_prev = float(rsi_series.iloc[-2])
 
             step = strike_dict[ticker]
@@ -303,16 +302,18 @@ def run_scan(group_name, strike_dict):
             is_red = curr_close < curr_open
 
             # -------------------------------------------------------------
-            # CONDITIONS: STRATEGY 1 (CLASSIC: ST + RSI + PIVOT)
+            # CONDITIONS: STRATEGY 1 (CLASSIC: PIVOT P + ST + RSI)
             # -------------------------------------------------------------
-            s1_call_cond = is_green and st1_bull and (curr_close > float(st1_val.iloc[-1])) and (curr_close > m3_upper) and (rsi_prev > 60.0)
-            s1_put_cond = is_red and st1_bear and (curr_close < float(st1_val.iloc[-1])) and (curr_close < m2_lower) and (rsi_prev < 40.0)
+            # CALL: Above Pivot P, Green, ST Bullish, RSI > 55
+            s1_call_cond = is_green and st1_bull and (curr_close > float(st1_val.iloc[-1])) and (curr_close > pivot_p) and (curr_rsi > 55.0)
+            # PUT: Below Pivot P, Red, ST Bearish, RSI < 45
+            s1_put_cond = is_red and st1_bear and (curr_close < float(st1_val.iloc[-1])) and (curr_close < pivot_p) and (curr_rsi < 45.0)
 
             # -------------------------------------------------------------
-            # CONDITIONS: STRATEGY 2 (ENHANCED: S1 + VWAP + 20 EMA)
+            # CONDITIONS: STRATEGY 2 (ENHANCED: S1 + VWAP)
             # -------------------------------------------------------------
-            s2_call_cond = s1_call_cond and (curr_close > curr_vwap) and (curr_close > daily_ema20)
-            s2_put_cond = s1_put_cond and (curr_close < curr_vwap) and (curr_close < daily_ema20)
+            s2_call_cond = s1_call_cond and (curr_close > curr_vwap)
+            s2_put_cond = s1_put_cond and (curr_close < curr_vwap)
 
             # =============================================================
             # [STRATEGY 1 PIPELINE]
@@ -332,45 +333,58 @@ def run_scan(group_name, strike_dict):
                         new_tsl = round(curr_high - buf, 2)
                         if new_tsl > pos1["trailing_sl"]:
                             pos1["trailing_sl"] = new_tsl
-                    if (curr_close <= pos1["trailing_sl"]) or st2_flipped_bear or (curr_close < s1):
-                        reason = "Trailing SL Hit" if curr_close <= pos1["trailing_sl"] else ("ST2 Flip" if st2_flipped_bear else "Broken S1")
+                    
+                    # Exit if TSL hit, ST2 flips bear, or Price drops below Pivot P
+                    tsl_hit = curr_close <= pos1["trailing_sl"]
+                    pivot_broken = curr_close < pivot_p
+
+                    if tsl_hit or st2_flipped_bear or pivot_broken:
+                        reason = "Trailing SL Hit" if tsl_hit else ("Pivot P Broken" if pivot_broken else "ST2 Flip")
                         pnl = curr_close - pos1["entry_price"]
                         send_telegram(f"🔴 *[S1: CLASSIC] CALL EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos1['itm_strike']} CE`")
                         pos1 = get_default_item_state()
+
                 elif trade_type == "PUT":
                     if curr_low < pos1["extreme_price"]:
                         pos1["extreme_price"] = curr_low
                         new_tsl = round(curr_low + buf, 2)
                         if new_tsl < pos1["trailing_sl"] or pos1["trailing_sl"] == 0:
                             pos1["trailing_sl"] = new_tsl
-                    if (curr_close >= pos1["trailing_sl"]) or st2_flipped_bull or (curr_close > r1):
-                        reason = "Trailing SL Hit" if curr_close >= pos1["trailing_sl"] else ("ST2 Flip" if st2_flipped_bull else "Broken R1")
+                    
+                    # Exit if TSL hit, ST2 flips bull, or Price rises above Pivot P
+                    tsl_hit = curr_close >= pos1["trailing_sl"]
+                    pivot_broken = curr_close > pivot_p
+
+                    if tsl_hit or st2_flipped_bull or pivot_broken:
+                        reason = "Trailing SL Hit" if tsl_hit else ("Pivot P Broken" if pivot_broken else "ST2 Flip")
                         pnl = pos1["entry_price"] - curr_close
                         send_telegram(f"🟢 *[S1: CLASSIC] PUT EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos1['itm_strike']} PE`")
                         pos1 = get_default_item_state()
             else:
                 if is_valid_entry:
                     if pos1.get("pending_stage") == "PENDING_CALL":
-                        if s1_call_cond:
+                        # Confirms if price remains above ST1 and above Pivot P
+                        if curr_close > float(st1_val.iloc[-1]) and curr_close > pivot_p:
                             atm, itm = get_options_strikes(curr_close, step, "CALL")
                             pos1.update({"in_trade": True, "pending_stage": None, "trade_type": "CALL", "entry_price": curr_close, "extreme_price": curr_high, "trailing_sl": round(curr_close - trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
-                            send_telegram(f"🟢 *[S1: CLASSIC] CALL CONFIRMED ENTRY (CE)*\n\n✅ *2nd Candle Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• SL: ₹{pos1['trailing_sl']:,.2f} (Trail: {trail_buffer} pts)\n• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)")
+                            send_telegram(f"🟢 *[S1: CLASSIC] CALL CONFIRMED ENTRY (CE)*\n\n✅ *Above Pivot P & ST1 Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Pivot P: ₹{pivot_p:,.2f}\n• SL: ₹{pos1['trailing_sl']:,.2f} (Trail: {trail_buffer} pts)\n• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)")
                         else:
                             pos1["pending_stage"] = None
                     elif pos1.get("pending_stage") == "PENDING_PUT":
-                        if s1_put_cond:
+                        # Confirms if price remains below ST1 and below Pivot P
+                        if curr_close < float(st1_val.iloc[-1]) and curr_close < pivot_p:
                             atm, itm = get_options_strikes(curr_close, step, "PUT")
                             pos1.update({"in_trade": True, "pending_stage": None, "trade_type": "PUT", "entry_price": curr_close, "extreme_price": curr_low, "trailing_sl": round(curr_close + trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
-                            send_telegram(f"🔴 *[S1: CLASSIC] PUT CONFIRMED ENTRY (PE)*\n\n✅ *2nd Candle Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• SL: ₹{pos1['trailing_sl']:,.2f} (Trail: {trail_buffer} pts)\n• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)")
+                            send_telegram(f"🔴 *[S1: CLASSIC] PUT CONFIRMED ENTRY (PE)*\n\n✅ *Below Pivot P & ST1 Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Pivot P: ₹{pivot_p:,.2f}\n• SL: ₹{pos1['trailing_sl']:,.2f} (Trail: {trail_buffer} pts)\n• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)")
                         else:
                             pos1["pending_stage"] = None
                     else:
                         if s1_call_cond:
                             pos1["pending_stage"] = "PENDING_CALL"
-                            send_telegram(f"🟡 *[S1: CLASSIC] CALL SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n⏳ *Wait for another candle to complete!*")
+                            send_telegram(f"🟡 *[S1: CLASSIC] CALL SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Above Pivot P: ₹{pivot_p:,.2f}\n⏳ *Wait for another candle to confirm above Pivot!*")
                         elif s1_put_cond:
                             pos1["pending_stage"] = "PENDING_PUT"
-                            send_telegram(f"🟡 *[S1: CLASSIC] PUT SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n⏳ *Wait for another candle to complete!*")
+                            send_telegram(f"🟡 *[S1: CLASSIC] PUT SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Below Pivot P: ₹{pivot_p:,.2f}\n⏳ *Wait for another candle to confirm below Pivot!*")
             state_s1[ticker] = pos1
 
             # =============================================================
@@ -395,11 +409,14 @@ def run_scan(group_name, strike_dict):
                             pos2["trailing_sl"] = new_tsl
                     tsl_hit = curr_close <= pos2["trailing_sl"]
                     vwap_exit = curr_close < curr_vwap
-                    if tsl_hit or st2_flipped_bear or (curr_close < s1) or vwap_exit or time_stop_hit:
-                        reason = "Trailing SL" if tsl_hit else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST2 Flip"))
+                    pivot_broken = curr_close < pivot_p
+
+                    if tsl_hit or st2_flipped_bear or pivot_broken or vwap_exit or time_stop_hit:
+                        reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST2 Flip")))
                         pnl = curr_close - pos2["entry_price"]
                         send_telegram(f"🔴 *[S2: ENHANCED] CALL EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos2['itm_strike']} CE`")
                         pos2 = get_default_item_state()
+
                 elif trade_type == "PUT":
                     if curr_low < pos2["extreme_price"]:
                         pos2["extreme_price"] = curr_low
@@ -408,34 +425,36 @@ def run_scan(group_name, strike_dict):
                             pos2["trailing_sl"] = new_tsl
                     tsl_hit = curr_close >= pos2["trailing_sl"]
                     vwap_exit = curr_close > curr_vwap
-                    if tsl_hit or st2_flipped_bull or (curr_close > r1) or vwap_exit or time_stop_hit:
-                        reason = "Trailing SL" if tsl_hit else ("VWAP Breakout" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST2 Flip"))
+                    pivot_broken = curr_close > pivot_p
+
+                    if tsl_hit or st2_flipped_bull or pivot_broken or vwap_exit or time_stop_hit:
+                        reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakout" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST2 Flip")))
                         pnl = pos2["entry_price"] - curr_close
                         send_telegram(f"🟢 *[S2: ENHANCED] PUT EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos2['itm_strike']} PE`")
                         pos2 = get_default_item_state()
             else:
                 if is_valid_entry:
                     if pos2.get("pending_stage") == "PENDING_CALL":
-                        if s2_call_cond and vol_confirmed:
+                        if s2_call_cond and vol_confirmed and (curr_close > pivot_p):
                             atm, itm = get_options_strikes(curr_close, step, "CALL")
                             pos2.update({"in_trade": True, "pending_stage": None, "trade_type": "CALL", "entry_price": curr_close, "extreme_price": curr_high, "trailing_sl": round(curr_close - trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm, "candles_held": 0})
-                            send_telegram(f"🟢 *[S2: ENHANCED] CALL ENTRY (CE)*\n\n✅ *2nd Candle + Volume + VWAP Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• VWAP: ₹{curr_vwap:,.2f} | Dynamic SL: ₹{pos2['trailing_sl']:,.2f}\n• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)\n⏳ *Time-Stop:* 30 Mins")
+                            send_telegram(f"🟢 *[S2: ENHANCED] CALL ENTRY (CE)*\n\n✅ *Above Pivot P + Volume + VWAP Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Pivot P: ₹{pivot_p:,.2f} | VWAP: ₹{curr_vwap:,.2f}\n• Dynamic SL: ₹{pos2['trailing_sl']:,.2f}\n• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)\n⏳ *Time-Stop:* 30 Mins")
                         else:
                             pos2["pending_stage"] = None
                     elif pos2.get("pending_stage") == "PENDING_PUT":
-                        if s2_put_cond and vol_confirmed:
+                        if s2_put_cond and vol_confirmed and (curr_close < pivot_p):
                             atm, itm = get_options_strikes(curr_close, step, "PUT")
                             pos2.update({"in_trade": True, "pending_stage": None, "trade_type": "PUT", "entry_price": curr_close, "extreme_price": curr_low, "trailing_sl": round(curr_close + trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm, "candles_held": 0})
-                            send_telegram(f"🔴 *[S2: ENHANCED] PUT ENTRY (PE)*\n\n✅ *2nd Candle + Volume + VWAP Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• VWAP: ₹{curr_vwap:,.2f} | Dynamic SL: ₹{pos2['trailing_sl']:,.2f}\n• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)\n⏳ *Time-Stop:* 30 Mins")
+                            send_telegram(f"🔴 *[S2: ENHANCED] PUT ENTRY (PE)*\n\n✅ *Below Pivot P + Volume + VWAP Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Pivot P: ₹{pivot_p:,.2f} | VWAP: ₹{curr_vwap:,.2f}\n• Dynamic SL: ₹{pos2['trailing_sl']:,.2f}\n• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)\n⏳ *Time-Stop:* 30 Mins")
                         else:
                             pos2["pending_stage"] = None
                     else:
                         if s2_call_cond:
                             pos2["pending_stage"] = "PENDING_CALL"
-                            send_telegram(f"🟡 *[S2: ENHANCED] CALL SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Above VWAP, M3 & 20 EMA. Awaiting Candle 2 Volume Confirmation!")
+                            send_telegram(f"🟡 *[S2: ENHANCED] CALL SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Above Pivot P: ₹{pivot_p:,.2f} & VWAP. Awaiting Candle 2 Confirmation!")
                         elif s2_put_cond:
                             pos2["pending_stage"] = "PENDING_PUT"
-                            send_telegram(f"🟡 *[S2: ENHANCED] PUT SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Below VWAP, M2 & 20 EMA. Awaiting Candle 2 Volume Confirmation!")
+                            send_telegram(f"🟡 *[S2: ENHANCED] PUT SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Below Pivot P: ₹{pivot_p:,.2f} & VWAP. Awaiting Candle 2 Confirmation!")
             state_s2[ticker] = pos2
 
         except Exception:
