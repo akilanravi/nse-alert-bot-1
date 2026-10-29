@@ -4,13 +4,25 @@ on:
   schedule:
     # 9:10 AM IST (3:40 AM UTC), Monday to Friday
     - cron: '40 3 * * 1-5'
+    # 5:05 PM IST (11:35 AM UTC), Monday to Friday (Daily Report)
+    - cron: '35 11 * * 1-5'
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Choose action: scan or report'
+        required: true
+        default: 'scan'
+        type: choice
+        options:
+          - scan
+          - report
 
 permissions:
   contents: write
 
 jobs:
   run-parallel-scanners:
+    if: github.event.schedule == '40 3 * * 1-5' || github.event.inputs.action == 'scan'
     runs-on: ubuntu-latest
     timeout-minutes: 370
     strategy:
@@ -49,3 +61,23 @@ jobs:
           git add trade_state_s1_${{ matrix.group }}.json trade_state_s2_${{ matrix.group }}.json || true
           git diff --staged --quiet || git commit -m "Save dual states for ${{ matrix.group }} [skip ci]"
           git push || true
+
+  send-daily-report:
+    if: github.event.schedule == '35 11 * * 1-5' || github.event.inputs.action == 'report'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install pytz requests
+
+      - name: Generate & Dispatch 5 PM PnL Report
+        run: |
+          python bot.py --report
