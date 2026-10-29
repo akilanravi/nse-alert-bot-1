@@ -98,22 +98,29 @@ def get_default_item_state():
     }
 
 def load_state(filename, symbols):
+    base_state = {
+        "positions": {s: get_default_item_state() for s in symbols},
+        "closed_trades": []
+    }
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
                 saved = json.load(f)
-                for t in symbols:
-                    if t not in saved:
-                        saved[t] = get_default_item_state()
-                    else:
-                        if "pending_stage" not in saved[t]:
-                            saved[t]["pending_stage"] = None
-                        if "candles_held" not in saved[t]:
-                            saved[t]["candles_held"] = 0
-                return saved
+                # Handle backwards compatibility if saved as raw symbol map
+                if "positions" in saved:
+                    base_state["closed_trades"] = saved.get("closed_trades", [])
+                    pos = saved["positions"]
+                    for t in symbols:
+                        if t in pos:
+                            base_state["positions"][t] = pos[t]
+                else:
+                    for t in symbols:
+                        if t in saved:
+                            base_state["positions"][t] = saved[t]
+                return base_state
         except Exception:
             pass
-    return {s: get_default_item_state() for s in symbols}
+    return base_state
 
 def save_state(filename, state):
     with open(filename, "w") as f:
@@ -293,7 +300,6 @@ def run_scan(group_name, strike_dict):
             st2_flipped_bull = (st2_dir.iloc[-1] == 1 and st2_dir.iloc[-2] == -1)
 
             curr_rsi = float(rsi_series.iloc[-1])
-            rsi_prev = float(rsi_series.iloc[-2])
 
             step = strike_dict[ticker]
             name = ticker.replace(".NS", "").replace("^NSEI", "NIFTY 50").replace("^NSEBANK", "BANK NIFTY").replace("^BSESN", "SENSEX")
@@ -304,9 +310,7 @@ def run_scan(group_name, strike_dict):
             # -------------------------------------------------------------
             # CONDITIONS: STRATEGY 1 (CLASSIC: PIVOT P + ST + RSI)
             # -------------------------------------------------------------
-            # CALL: Above Pivot P, Green, ST Bullish, RSI > 55
             s1_call_cond = is_green and st1_bull and (curr_close > float(st1_val.iloc[-1])) and (curr_close > pivot_p) and (curr_rsi > 55.0)
-            # PUT: Below Pivot P, Red, ST Bearish, RSI < 45
             s1_put_cond = is_red and st1_bear and (curr_close < float(st1_val.iloc[-1])) and (curr_close < pivot_p) and (curr_rsi < 45.0)
 
             # -------------------------------------------------------------
@@ -318,13 +322,17 @@ def run_scan(group_name, strike_dict):
             # =============================================================
             # [STRATEGY 1 PIPELINE]
             # =============================================================
-            pos1 = state_s1.get(ticker, get_default_item_state())
+            pos1 = state_s1["positions"].get(ticker, get_default_item_state())
             if pos1["in_trade"]:
                 trade_type = pos1["trade_type"]
                 buf = pos1.get("trail_buffer", trail_buffer)
 
                 if is_hard_squareoff:
                     pnl = (curr_close - pos1["entry_price"]) if trade_type == "CALL" else (pos1["entry_price"] - curr_close)
+                    state_s1["closed_trades"].append({
+                        "ticker": name, "type": trade_type, "strike": pos1["itm_strike"],
+                        "entry": pos1["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": "3:15 PM EOD"
+                    })
                     send_telegram(f"⏰ *[S1: CLASSIC] 3:15 PM EXIT*: `{name}` | PnL: {pnl:+.2f} pts | Close `{pos1['itm_strike']} {'CE' if trade_type == 'CALL' else 'PE'}`")
                     pos1 = get_default_item_state()
                 elif trade_type == "CALL":
@@ -334,13 +342,16 @@ def run_scan(group_name, strike_dict):
                         if new_tsl > pos1["trailing_sl"]:
                             pos1["trailing_sl"] = new_tsl
                     
-                    # Exit if TSL hit, ST2 flips bear, or Price drops below Pivot P
                     tsl_hit = curr_close <= pos1["trailing_sl"]
                     pivot_broken = curr_close < pivot_p
 
                     if tsl_hit or st2_flipped_bear or pivot_broken:
                         reason = "Trailing SL Hit" if tsl_hit else ("Pivot P Broken" if pivot_broken else "ST2 Flip")
                         pnl = curr_close - pos1["entry_price"]
+                        state_s1["closed_trades"].append({
+                            "ticker": name, "type": "CALL", "strike": pos1["itm_strike"],
+                            "entry": pos1["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
+                        })
                         send_telegram(f"🔴 *[S1: CLASSIC] CALL EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos1['itm_strike']} CE`")
                         pos1 = get_default_item_state()
 
@@ -351,19 +362,21 @@ def run_scan(group_name, strike_dict):
                         if new_tsl < pos1["trailing_sl"] or pos1["trailing_sl"] == 0:
                             pos1["trailing_sl"] = new_tsl
                     
-                    # Exit if TSL hit, ST2 flips bull, or Price rises above Pivot P
                     tsl_hit = curr_close >= pos1["trailing_sl"]
                     pivot_broken = curr_close > pivot_p
 
                     if tsl_hit or st2_flipped_bull or pivot_broken:
                         reason = "Trailing SL Hit" if tsl_hit else ("Pivot P Broken" if pivot_broken else "ST2 Flip")
                         pnl = pos1["entry_price"] - curr_close
+                        state_s1["closed_trades"].append({
+                            "ticker": name, "type": "PUT", "strike": pos1["itm_strike"],
+                            "entry": pos1["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
+                        })
                         send_telegram(f"🟢 *[S1: CLASSIC] PUT EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos1['itm_strike']} PE`")
                         pos1 = get_default_item_state()
             else:
                 if is_valid_entry:
                     if pos1.get("pending_stage") == "PENDING_CALL":
-                        # Confirms if price remains above ST1 and above Pivot P
                         if curr_close > float(st1_val.iloc[-1]) and curr_close > pivot_p:
                             atm, itm = get_options_strikes(curr_close, step, "CALL")
                             pos1.update({"in_trade": True, "pending_stage": None, "trade_type": "CALL", "entry_price": curr_close, "extreme_price": curr_high, "trailing_sl": round(curr_close - trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
@@ -371,7 +384,6 @@ def run_scan(group_name, strike_dict):
                         else:
                             pos1["pending_stage"] = None
                     elif pos1.get("pending_stage") == "PENDING_PUT":
-                        # Confirms if price remains below ST1 and below Pivot P
                         if curr_close < float(st1_val.iloc[-1]) and curr_close < pivot_p:
                             atm, itm = get_options_strikes(curr_close, step, "PUT")
                             pos1.update({"in_trade": True, "pending_stage": None, "trade_type": "PUT", "entry_price": curr_close, "extreme_price": curr_low, "trailing_sl": round(curr_close + trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
@@ -385,12 +397,12 @@ def run_scan(group_name, strike_dict):
                         elif s1_put_cond:
                             pos1["pending_stage"] = "PENDING_PUT"
                             send_telegram(f"🟡 *[S1: CLASSIC] PUT SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Below Pivot P: ₹{pivot_p:,.2f}\n⏳ *Wait for another candle to confirm below Pivot!*")
-            state_s1[ticker] = pos1
+            state_s1["positions"][ticker] = pos1
 
             # =============================================================
             # [STRATEGY 2 PIPELINE]
             # =============================================================
-            pos2 = state_s2.get(ticker, get_default_item_state())
+            pos2 = state_s2["positions"].get(ticker, get_default_item_state())
             if pos2["in_trade"]:
                 pos2["candles_held"] += 1
                 trade_type = pos2["trade_type"]
@@ -399,6 +411,10 @@ def run_scan(group_name, strike_dict):
 
                 if is_hard_squareoff:
                     pnl = (curr_close - pos2["entry_price"]) if trade_type == "CALL" else (pos2["entry_price"] - curr_close)
+                    state_s2["closed_trades"].append({
+                        "ticker": name, "type": trade_type, "strike": pos2["itm_strike"],
+                        "entry": pos2["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": "3:15 PM EOD"
+                    })
                     send_telegram(f"⏰ *[S2: ENHANCED] 3:15 PM EXIT*: `{name}` | PnL: {pnl:+.2f} pts | Close `{pos2['itm_strike']} {'CE' if trade_type == 'CALL' else 'PE'}`")
                     pos2 = get_default_item_state()
                 elif trade_type == "CALL":
@@ -414,6 +430,10 @@ def run_scan(group_name, strike_dict):
                     if tsl_hit or st2_flipped_bear or pivot_broken or vwap_exit or time_stop_hit:
                         reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST2 Flip")))
                         pnl = curr_close - pos2["entry_price"]
+                        state_s2["closed_trades"].append({
+                            "ticker": name, "type": "CALL", "strike": pos2["itm_strike"],
+                            "entry": pos2["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
+                        })
                         send_telegram(f"🔴 *[S2: ENHANCED] CALL EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos2['itm_strike']} CE`")
                         pos2 = get_default_item_state()
 
@@ -430,6 +450,10 @@ def run_scan(group_name, strike_dict):
                     if tsl_hit or st2_flipped_bull or pivot_broken or vwap_exit or time_stop_hit:
                         reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakout" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST2 Flip")))
                         pnl = pos2["entry_price"] - curr_close
+                        state_s2["closed_trades"].append({
+                            "ticker": name, "type": "PUT", "strike": pos2["itm_strike"],
+                            "entry": pos2["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
+                        })
                         send_telegram(f"🟢 *[S2: ENHANCED] PUT EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos2['itm_strike']} PE`")
                         pos2 = get_default_item_state()
             else:
@@ -455,7 +479,7 @@ def run_scan(group_name, strike_dict):
                         elif s2_put_cond:
                             pos2["pending_stage"] = "PENDING_PUT"
                             send_telegram(f"🟡 *[S2: ENHANCED] PUT SETUP (Candle 1)*\n\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Below Pivot P: ₹{pivot_p:,.2f} & VWAP. Awaiting Candle 2 Confirmation!")
-            state_s2[ticker] = pos2
+            state_s2["positions"][ticker] = pos2
 
         except Exception:
             continue
@@ -464,12 +488,106 @@ def run_scan(group_name, strike_dict):
     save_state(file_s2, state_s2)
 
 # =====================================================================
-# 6. INTRADAY CONTINUOUS LOOP (9:30 AM TO 3:15 PM IST)
+# 6. POST-5 PM DAILY PERFORMANCE REPORT AGGREGATOR
+# =====================================================================
+def generate_daily_report():
+    ist = pytz.timezone("Asia/Kolkata")
+    today_str = datetime.datetime.now(ist).strftime("%d-%b-%Y")
+    
+    s1_all_trades = []
+    s2_all_trades = []
+
+    for group in SECTOR_MAPS.keys():
+        f1 = f"trade_state_s1_{group}.json"
+        f2 = f"trade_state_s2_{group}.json"
+
+        if os.path.exists(f1):
+            try:
+                with open(f1, "r") as f:
+                    s1_data = json.load(f)
+                    s1_all_trades.extend(s1_data.get("closed_trades", []))
+            except Exception:
+                pass
+
+        if os.path.exists(f2):
+            try:
+                with open(f2, "r") as f:
+                    s2_data = json.load(f)
+                    s2_all_trades.extend(s2_data.get("closed_trades", []))
+            except Exception:
+                pass
+
+    def summarize_strategy(trades):
+        if not trades:
+            return {"count": 0, "wins": 0, "losses": 0, "pnl": 0.0, "win_rate": 0.0, "top_winner": None, "top_loser": None}
+        count = len(trades)
+        wins = sum(1 for t in trades if t["pnl"] > 0)
+        losses = sum(1 for t in trades if t["pnl"] < 0)
+        total_pnl = sum(t["pnl"] for t in trades)
+        win_rate = (wins / count * 100) if count > 0 else 0
+        sorted_trades = sorted(trades, key=lambda x: x["pnl"], reverse=True)
+        return {
+            "count": count,
+            "wins": wins,
+            "losses": losses,
+            "pnl": total_pnl,
+            "win_rate": win_rate,
+            "top_winner": sorted_trades[0] if count > 0 else None,
+            "top_loser": sorted_trades[-1] if count > 0 else None
+        }
+
+    s1_sum = summarize_strategy(s1_all_trades)
+    s2_sum = summarize_strategy(s2_all_trades)
+
+    report = (
+        f"📊 *DAILY INTRADAY REPORT | {today_str}*\n"
+        f"════════════════════════════\n\n"
+        f"📘 *[STRATEGY 1: CLASSIC PIVOT]*\n"
+        f"• Total Trades: `{s1_sum['count']}` (✅ {s1_sum['wins']} | ❌ {s1_sum['losses']})\n"
+        f"• Win Rate: `{s1_sum['win_rate']:.1f}%`\n"
+        f"• Net PnL (Spot): *{s1_sum['pnl']:+.2f} pts*\n"
+    )
+    if s1_sum["top_winner"]:
+        report += f"• Best: `{s1_sum['top_winner']['ticker']}` ({s1_sum['top_winner']['pnl']:+.2f} pts)\n"
+    if s1_sum["top_loser"]:
+        report += f"• Worst: `{s1_sum['top_loser']['ticker']}` ({s1_sum['top_loser']['pnl']:+.2f} pts)\n"
+
+    report += (
+        f"\n📙 *[STRATEGY 2: ENHANCED VWAP]*\n"
+        f"• Total Trades: `{s2_sum['count']}` (✅ {s2_sum['wins']} | ❌ {s2_sum['losses']})\n"
+        f"• Win Rate: `{s2_sum['win_rate']:.1f}%`\n"
+        f"• Net PnL (Spot): *{s2_sum['pnl']:+.2f} pts*\n"
+    )
+    if s2_sum["top_winner"]:
+        report += f"• Best: `{s2_sum['top_winner']['ticker']}` ({s2_sum['top_winner']['pnl']:+.2f} pts)\n"
+    if s2_sum["top_loser"]:
+        report += f"• Worst: `{s2_sum['top_loser']['ticker']}` ({s2_sum['top_loser']['pnl']:+.2f} pts)\n"
+
+    total_pts = s1_sum['pnl'] + s2_sum['pnl']
+    report += (
+        f"\n════════════════════════════\n"
+        f"🎯 *COMBINED RESULT:* *{total_pts:+.2f} pts*\n"
+    )
+
+    send_telegram(report)
+    print("Report sent successfully.")
+
+# =====================================================================
+# 7. MAIN ENTRYPOINT
 # =====================================================================
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--group", required=True, choices=list(SECTOR_MAPS.keys()))
+    parser.add_argument("--group", choices=list(SECTOR_MAPS.keys()), help="Sector group to monitor")
+    parser.add_argument("--report", action="store_true", help="Generate post-5 PM summary report")
     args = parser.parse_args()
+
+    if args.report:
+        generate_daily_report()
+        return
+
+    if not args.group:
+        print("Error: Specify either --group <group_name> or --report")
+        return
 
     group_name = args.group
     strike_dict = SECTOR_MAPS[group_name]
