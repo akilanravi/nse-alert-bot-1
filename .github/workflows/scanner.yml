@@ -1,42 +1,51 @@
-name: Multi-Strategy Real-Time Trading Bot
+name: 5M Parallel Telegram Alert Scanner
 
 on:
   schedule:
-    # 03:45 UTC = 09:15 AM IST (Starts at market open Mon-Fri)
-    - cron: '45 3 * * 1-5'
+    # 9:10 AM IST (3:40 AM UTC), Monday to Friday
+    - cron: '40 3 * * 1-5'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  realtime-scanner:
+  run-parallel-scanners:
     runs-on: ubuntu-latest
-    timeout-minutes: 375
+    timeout-minutes: 370
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - indices_banking
+          - it_energy
+          - auto_metals
+          - pharma_fmcg
+          - telecom_infra_chem
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install pandas numpy requests pytz
+        run: |
+          pip install yfinance pandas numpy pytz requests
 
-      - name: Run Real-Time Scanner (Non-stop 9:15 AM - 3:15 PM IST)
-        run: python bot.py
+      - name: Run Dedicated Sector Worker
+        run: |
+          python bot.py --group ${{ matrix.group }}
 
-      - name: Persist Final Trade Logs to GitHub
+      - name: Save Partitioned Trailing States
         if: always()
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action Bot"
-          git pull origin main --rebase || true
-          if [ -f trade_log.csv ]; then
-            git add trade_log.csv
-            git commit -m "Trade log update [skip ci]" || echo "No trades to commit"
-            git push origin main || true
-          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add trade_state_s1_${{ matrix.group }}.json trade_state_s2_${{ matrix.group }}.json || true
+          git diff --staged --quiet || git commit -m "Save dual states for ${{ matrix.group }} [skip ci]"
+          git push || true
