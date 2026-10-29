@@ -30,7 +30,8 @@ LOG_FILE = "trade_log.csv"
 def send_telegram_alert(message: str):
     """Dispatches HTML-formatted alerts to each configured bot token & chat_id pair."""
     if not TELEGRAM_RECIPIENTS:
-        logging.warning("No Telegram recipients configured. Message:\n" + message)
+        logging.warning("No Telegram recipients configured. Message:
+" + message)
         return
 
     for item in TELEGRAM_RECIPIENTS:
@@ -569,45 +570,3 @@ def run_continuous_live():
 
 if __name__ == "__main__":
     run_continuous_live()
-Scroll to the bottom, select Commit changes, and choose Commit directly to the main branch.Step 2: Update .github/workflows/scanner.yml Directly on GitHubNavigate to .github/workflows/scanner.yml on GitHub.com.   Click the pencil icon (Edit this file).Replace the entire content with this:YAMLname: Multi-Strategy Real-Time Trading Bot
-
-on:
-  schedule:
-    # 03:45 UTC = 09:15 AM IST (Starts at market open Mon-Fri)
-    - cron: '45 3 * * 1-5'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  realtime-scanner:
-    runs-on: ubuntu-latest
-    timeout-minutes: 375
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Dependencies
-        run: pip install pandas numpy requests pytz
-
-      - name: Run Real-Time Scanner (Non-stop 9:15 AM - 3:15 PM IST)
-        run: python bot.py
-
-      - name: Persist Final Trade Logs to GitHub
-        if: always()
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action Bot"
-          git pull origin main --rebase || true
-          if [ -f trade_log.csv ]; then
-            git add trade_log.csv
-            git commit -m "Trade log update [skip ci]" || echo "No trades to commit"
-            git push origin main || true
-          fi
