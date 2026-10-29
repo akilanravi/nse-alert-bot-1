@@ -111,7 +111,6 @@ def calculate_ema(series: pd.Series, span: int) -> pd.Series:
 # 3. STRATEGY ENGINES (S1, S2, S3, S4)
 # ==============================================================================
 def evaluate_strategy_1(df: pd.DataFrame) -> dict:
-    """Strategy 1: Momentum Breakout (Supertrend + RSI confirmation)."""
     if len(df) < 20:
         return {"signal": None}
     df = df.copy()
@@ -156,7 +155,6 @@ def evaluate_strategy_1(df: pd.DataFrame) -> dict:
 
 
 def evaluate_strategy_2(df: pd.DataFrame, pivot_level: float) -> dict:
-    """Strategy 2: Pullback & Value Confirmation (Testing Key HTF Pivot)."""
     if len(df) < 20 or pd.isna(pivot_level):
         return {"signal": None}
     df = df.copy()
@@ -184,7 +182,6 @@ def evaluate_strategy_2(df: pd.DataFrame, pivot_level: float) -> dict:
 
 
 def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
-    """Strategy 3: Daily Level Trap & Mean Reversal (Liquidity Sweeps)."""
     if len(df_15m) < 20 or pd.isna(pdh) or pd.isna(pdl):
         return {"signal": None}
     df = df_15m.copy()
@@ -195,7 +192,6 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
     atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
     vol_confirmed = curr["volume"] >= (curr["vol_ma"] * 1.05)
 
-    # Bearish Sweep (PE)
     if curr["high"] > pdh and curr["close"] < pdh and vol_confirmed:
         upper_wick = curr["high"] - max(curr["open"], curr["close"])
         body = abs(curr["close"] - curr["open"])
@@ -213,7 +209,6 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
                     "notes": f"PDH Sweep & Reversal (PDH: ₹{pdh})",
                 }
 
-    # Bullish Sweep (CE)
     if curr["low"] < pdl and curr["close"] > pdl and vol_confirmed:
         lower_wick = min(curr["open"], curr["close"]) - curr["low"]
         body = abs(curr["close"] - curr["open"])
@@ -234,7 +229,6 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
 
 
 def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) -> dict:
-    """Strategy 4: Intraday Indian F&O Framework."""
     if len(df_5m) < 25 or len(df_15m) < 20:
         return {"signal": None}
 
@@ -259,7 +253,6 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
     range_high = df_5["high"].iloc[-21:-1].max()
     range_low = df_5["low"].iloc[-21:-1].min()
 
-    # SETUP A: BREAKOUT & RETEST (CE)
     if trend_15m_bullish and curr["close"] > curr["vwap"]:
         breakout_candidates = [
             i for i in range(2, min(8, len(df_5)))
@@ -281,7 +274,6 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                         "notes": f"5m Retest Confirmed @ ₹{range_high:.2f} | 15m VWAP Rising | Risk: {risk:.2f} pts",
                     }
 
-    # SETUP A: BREAKDOWN & RETEST (PE)
     if trend_15m_bearish and curr["close"] < curr["vwap"]:
         breakdown_candidates = [
             i for i in range(2, min(8, len(df_5)))
@@ -303,7 +295,6 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                         "notes": f"5m Breakdown Retest Failed @ ₹{range_low:.2f} | 15m VWAP Falling | Risk: {risk:.2f} pts",
                     }
 
-    # SETUP B: TREND PULLBACK (CE)
     if trend_15m_bullish and curr["close"] > curr["vwap"]:
         ema_aligned = curr["ema9"] > curr["ema21"]
         pulled_to_ema21 = abs(curr["low"] - curr["ema21"]) <= (curr["close"] * 0.003) or (curr["low"] <= curr["ema21"] and curr["close"] >= curr["ema21"])
@@ -324,7 +315,6 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                     "notes": f"Pullback to EMA 21 | RSI: {curr['rsi']:.1f} ↗ | Risk: {risk:.2f} pts",
                 }
 
-    # SETUP B: TREND PULLBACK (PE)
     if trend_15m_bearish and curr["close"] < curr["vwap"]:
         ema_aligned = curr["ema9"] < curr["ema21"]
         pulled_to_ema21 = abs(curr["high"] - curr["ema21"]) <= (curr["close"] * 0.003) or (curr["high"] >= curr["ema21"] and curr["close"] <= curr["ema21"])
@@ -402,7 +392,7 @@ WATCHLIST_BLOCKS = {
 
 
 # ==============================================================================
-# 5. ALERT FORMATTING & LOGGING
+# 5. ALERT FORMATTING & CACHED TRADE ENTRY
 # ==============================================================================
 def format_alert_message(symbol: str, category: str, result: dict) -> str:
     direction_emoji = "🟢" if "BUY" in result["signal"] else "🔴"
@@ -424,10 +414,16 @@ def format_alert_message(symbol: str, category: str, result: dict) -> str:
     )
 
 
-def record_trade_entry(symbol: str, category: str, setup: dict):
-    """Logs the entry details to trade_log.csv."""
+sent_alerts_cache = set()
+
+def record_trade_entry(symbol: str, category: str, setup: dict) -> bool:
+    """Logs the entry details to trade_log.csv and prevents duplicate alert spam."""
     file_exists = os.path.isfile(LOG_FILE)
     today_str = datetime.now().strftime("%Y-%m-%d")
+
+    cache_key = f"{today_str}_{symbol}_{setup['strategy']}_{setup['signal']}"
+    if cache_key in sent_alerts_cache:
+        return False
 
     if file_exists:
         try:
@@ -438,9 +434,11 @@ def record_trade_entry(symbol: str, category: str, setup: dict):
                 & (existing["Strategy"] == setup["strategy"])
             ]
             if not already_logged.empty:
-                return
+                return False
         except Exception:
             pass
+
+    sent_alerts_cache.add(cache_key)
 
     with open(LOG_FILE, mode="a", newline="") as f:
         writer = csv.writer(f)
@@ -463,129 +461,14 @@ def record_trade_entry(symbol: str, category: str, setup: dict):
             0.0,
             0.0,
         ])
-
-
-def generate_eod_summary(get_market_data_func) -> str:
-    """Consolidated summary sent to both Telegram recipients at 3:15 PM."""
-    if not os.path.isfile(LOG_FILE):
-        return "⚠️ <b>[EOD REPORT]</b> No trade log found for today."
-
-    df_log = pd.read_csv(LOG_FILE)
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    today_trades = df_log[df_log["Date"] == today_str].copy()
-
-    if today_trades.empty:
-        return f"📅 <b>EOD Report ({today_str})</b>\nNo trades were recorded today."
-
-    stats = {
-        "S1": {"trades": 0, "wins": 0, "losses": 0, "points": 0.0, "pct_sum": 0.0},
-        "S2": {"trades": 0, "wins": 0, "losses": 0, "points": 0.0, "pct_sum": 0.0},
-        "S3": {"trades": 0, "wins": 0, "losses": 0, "points": 0.0, "pct_sum": 0.0},
-        "S4": {"trades": 0, "wins": 0, "losses": 0, "points": 0.0, "pct_sum": 0.0},
-    }
-
-    trade_details_text = []
-
-    for idx, row in today_trades.iterrows():
-        symbol = row["Symbol"]
-        strat_str = str(row["Strategy"])
-        if "S1" in strat_str:
-            strat_key = "S1"
-        elif "S2" in strat_str:
-            strat_key = "S2"
-        elif "S3" in strat_str:
-            strat_key = "S3"
-        elif "S4" in strat_str:
-            strat_key = "S4"
-        else:
-            strat_key = "S1"
-
-        signal = row["Signal"]
-        entry = float(row["Entry"])
-        sl = float(row["SL"])
-        tp1 = float(row["TP1"])
-        tp2 = float(row["TP2"])
-
-        df_15m, _, _, _, _ = get_market_data_func(symbol)
-        day_high = df_15m["high"].max()
-        day_low = df_15m["low"].min()
-        close_315 = df_15m["close"].iloc[-1]
-
-        if "BUY" in signal or "CE" in signal:
-            if day_low <= sl:
-                pnl_pts = sl - entry
-                status = "🔴 SL Hit"
-            elif day_high >= tp1:
-                runner_exit = tp2 if day_high >= tp2 else close_315
-                pnl_pts = (0.5 * (tp1 - entry)) + (0.5 * (runner_exit - entry))
-                status = "🟢 TP Hit"
-            else:
-                pnl_pts = close_315 - entry
-                status = "⚪ Mkt Close"
-        else:
-            if day_high >= sl:
-                pnl_pts = entry - sl
-                status = "🔴 SL Hit"
-            elif day_low <= tp1:
-                runner_exit = tp2 if day_low <= tp2 else close_315
-                pnl_pts = (0.5 * (entry - tp1)) + (0.5 * (entry - runner_exit))
-                status = "🟢 TP Hit"
-            else:
-                pnl_pts = entry - close_315
-                status = "⚪ Mkt Close"
-
-        pnl_pct = (pnl_pts / entry) * 100
-        stats[strat_key]["trades"] += 1
-        stats[strat_key]["points"] += pnl_pts
-        stats[strat_key]["pct_sum"] += pnl_pct
-
-        if pnl_pts > 0:
-            stats[strat_key]["wins"] += 1
-        else:
-            stats[strat_key]["losses"] += 1
-
-        trade_details_text.append(
-            f"• <b>{symbol}</b> ({strat_key}): {status} | Entry: ₹{entry:.2f} | P&L: <b>{pnl_pct:+.2f}%</b> ({pnl_pts:+.2f} pts)"
-        )
-
-    total_trades = len(today_trades)
-    total_wins = sum(s["wins"] for s in stats.values())
-    total_losses = sum(s["losses"] for s in stats.values())
-    overall_win_rate = (total_wins / total_trades * 100) if total_trades > 0 else 0
-    total_pct = sum(s["pct_sum"] for s in stats.values())
-
-    message = (
-        f"📋 <b>DAILY PERFORMANCE SUMMARY (3:15 PM)</b>\n"
-        f"📅 Date: {today_str}\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 <b>Total Trades:</b> {total_trades} (Win: {total_wins} | Loss: {total_losses})\n"
-        f"🎯 <b>Win Rate:</b> {overall_win_rate:.1f}%\n"
-        f"💰 <b>Total Gross Return:</b> <b>{total_pct:+.2f}%</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"<b>STRATEGY BREAKDOWN:</b>\n"
-    )
-
-    for strat, data in stats.items():
-        if data["trades"] > 0:
-            strat_wr = (data["wins"] / data["trades"]) * 100
-            message += (
-                f"🔹 <b>{strat}:</b> {data['trades']} Trades | "
-                f"W: {data['wins']} L: {data['losses']} ({strat_wr:.0f}%) | "
-                f"Net: <b>{data['pct_sum']:+.2f}%</b>\n"
-            )
-        else:
-            message += f"🔹 <b>{strat}:</b> 0 Trades triggered\n"
-
-    message += "\n<b>INDIVIDUAL TRADES:</b>\n" + "\n".join(trade_details_text)
-    return message
+    return True
 
 
 # ==============================================================================
-# 6. SCANNER EXECUTION & LIVE CONTINUOUS LOOP
+# 6. REAL-TIME CONTINUOUS RUNNER
 # ==============================================================================
 def fetch_mock_data(symbol: str):
-    """Generates aligned 15m and 5m market data. Replace with your live broker API feed."""
-    np.random.seed(abs(hash(symbol)) % 10000)
+    np.random.seed(abs(hash(symbol) + int(time.time() // 30)) % 10000)
     base_price = 2500 if "NIFTY" not in symbol else 24000
 
     dates_15m = pd.date_range(end=pd.Timestamp.now(), periods=50, freq="15min")
@@ -614,108 +497,76 @@ def fetch_mock_data(symbol: str):
     return df_15m, df_5m, pdh, pdl, pivot
 
 
-def scan_block(block_id: int):
-    """Iterates through instruments in the designated sector block."""
-    if block_id not in WATCHLIST_BLOCKS:
-        logging.error(f"Invalid block_id: {block_id}. Valid range: 1 to 5.")
-        return
+def scan_single_symbol(symbol: str, category: str):
+    try:
+        df_15m, df_5m, pdh, pdl, pivot = fetch_mock_data(symbol)
 
-    block_data = WATCHLIST_BLOCKS[block_id]
-    category = block_data["category"]
-    logging.info(f"Scanning {block_data['name']} ({len(block_data['symbols'])} symbols)...")
-
-    for symbol in block_data["symbols"]:
-        try:
-            df_15m, df_5m, pdh, pdl, pivot = fetch_mock_data(symbol)
-
-            # Strategy 4: Intraday CALL/PUT Framework
-            res_s4 = evaluate_strategy_4(symbol, df_5m, df_15m)
-            if res_s4["signal"]:
+        res_s4 = evaluate_strategy_4(symbol, df_5m, df_15m)
+        if res_s4["signal"]:
+            if record_trade_entry(symbol, category, res_s4):
                 send_telegram_alert(format_alert_message(symbol, category, res_s4))
-                record_trade_entry(symbol, category, res_s4)
-                continue
+            return
 
-            # Strategy 3: Daily Level Trap & Sweeps
-            res_s3 = evaluate_strategy_3(df_15m, pdh, pdl)
-            if res_s3["signal"]:
+        res_s3 = evaluate_strategy_3(df_15m, pdh, pdl)
+        if res_s3["signal"]:
+            if record_trade_entry(symbol, category, res_s3):
                 send_telegram_alert(format_alert_message(symbol, category, res_s3))
-                record_trade_entry(symbol, category, res_s3)
-                continue
+            return
 
-            # Strategy 2: Pivot Pullback
-            res_s2 = evaluate_strategy_2(df_15m, pivot)
-            if res_s2["signal"]:
+        res_s2 = evaluate_strategy_2(df_15m, pivot)
+        if res_s2["signal"]:
+            if record_trade_entry(symbol, category, res_s2):
                 send_telegram_alert(format_alert_message(symbol, category, res_s2))
-                record_trade_entry(symbol, category, res_s2)
-                continue
+            return
 
-            # Strategy 1: Momentum Breakout
-            res_s1 = evaluate_strategy_1(df_15m)
-            if res_s1["signal"]:
+        res_s1 = evaluate_strategy_1(df_15m)
+        if res_s1["signal"]:
+            if record_trade_entry(symbol, category, res_s1):
                 send_telegram_alert(format_alert_message(symbol, category, res_s1))
-                record_trade_entry(symbol, category, res_s1)
-                continue
+            return
 
-        except Exception as e:
-            logging.error(f"Error checking {symbol}: {e}")
+    except Exception as e:
+        logging.error(f"Error checking {symbol}: {e}")
 
 
 def scan_all_blocks():
-    """Scans all 5 watchlist blocks sequentially."""
-    for block_id in sorted(WATCHLIST_BLOCKS.keys()):
-        scan_block(block_id)
+    """Iterates through all 100+ instruments across 5 sectors."""
+    for block_id, block_data in WATCHLIST_BLOCKS.items():
+        category = block_data["category"]
+        for symbol in block_data["symbols"]:
+            scan_single_symbol(symbol, category)
 
 
-def run_continuous_session():
-    """Runs continuously from 09:15 AM to 03:15 PM IST."""
+def run_continuous_live():
+    """Continuously cycles through all instruments non-stop between 09:15 AM and 03:15 PM IST."""
     ist = pytz.timezone("Asia/Kolkata")
-    logging.info("Starting continuous live market scanning loop (IST timezone)...")
+    logging.info("Starting REAL-TIME continuous scanning loop (09:15 AM to 03:15 PM IST)...")
 
     market_open = (9, 15)
     market_close = (15, 15)
-    eod_sent = False
 
     while True:
         now_ist = datetime.now(ist)
         current_time = (now_ist.hour, now_ist.minute)
         weekday = now_ist.weekday()  # 0 = Monday, 4 = Friday
 
-        logging.info(f"Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S')} (Day: {weekday})")
-
-        # During live trading hours (Mon-Fri 09:15 - 15:15 IST)
+        # Active trading hours: Monday - Friday between 09:15 and 15:15 IST
         if weekday < 5 and market_open <= current_time <= market_close:
-            logging.info("--- [LIVE SCAN CYCLE STARTED] ---")
             scan_all_blocks()
-            logging.info("--- [LIVE SCAN COMPLETED] Sleeping for 15 minutes... ---")
-            time.sleep(900)
+            # 5-second buffer between full watchlist cycles to avoid CPU throttling
+            time.sleep(5)
 
-        # Market close reached (Past 3:15 PM IST)
+        # Once 3:15 PM IST is reached, shut down
         elif weekday < 5 and current_time > market_close:
-            if not eod_sent:
-                logging.info("Market session closed. Generating and dispatching EOD report...")
-                summary_msg = generate_eod_summary(fetch_mock_data)
-                send_telegram_alert(summary_msg)
-                eod_sent = True
-            logging.info("Trading day finished. Shutting down runner.")
+            logging.info("Market reached 03:15 PM IST. Trading session finished. Exiting.")
             break
 
-        # Outside regular trading hours (e.g. testing manual dispatch at night or weekends)
+        # Outside regular trading hours (e.g. testing manual dispatch at night or on weekends)
         else:
-            logging.warning("Outside regular trading hours (09:15 - 15:15 IST Mon-Fri). Performing a single test scan...")
+            logging.info("Outside trading hours (09:15 - 15:15 IST Mon-Fri). Performing one test cycle...")
             scan_all_blocks()
             break
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--eod":
-        summary_msg = generate_eod_summary(fetch_mock_data)
-        send_telegram_alert(summary_msg)
-    elif len(sys.argv) > 1 and sys.argv[1] == "--live":
-        run_continuous_session()
-    elif len(sys.argv) > 1 and sys.argv[1] == "--all":
-        scan_all_blocks()
-    elif len(sys.argv) > 1 and sys.argv[1].isdigit():
-        target_block = int(sys.argv[1])
-        scan_block(target_block)
-    else:
-        scan_all_blocks()
+    run_continuous_live()
