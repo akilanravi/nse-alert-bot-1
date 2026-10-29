@@ -2,9 +2,11 @@ import csv
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 import numpy as np
 import pandas as pd
+import pytz
 import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -106,7 +108,7 @@ def calculate_ema(series: pd.Series, span: int) -> pd.Series:
 
 
 # ==============================================================================
-# 3. STRATEGY ENGINES (S1, S2, S3, S4 - ALL WITH CE & PE)
+# 3. STRATEGY ENGINES (S1, S2, S3, S4)
 # ==============================================================================
 def evaluate_strategy_1(df: pd.DataFrame) -> dict:
     """Strategy 1: Momentum Breakout (Supertrend + RSI confirmation)."""
@@ -193,7 +195,7 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
     atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
     vol_confirmed = curr["volume"] >= (curr["vol_ma"] * 1.05)
 
-    # Bearish Sweep (PE): Sweeps PDH and closes back below
+    # Bearish Sweep (PE)
     if curr["high"] > pdh and curr["close"] < pdh and vol_confirmed:
         upper_wick = curr["high"] - max(curr["open"], curr["close"])
         body = abs(curr["close"] - curr["open"])
@@ -211,7 +213,7 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
                     "notes": f"PDH Sweep & Reversal (PDH: ₹{pdh})",
                 }
 
-    # Bullish Sweep (CE): Sweeps PDL and closes back above
+    # Bullish Sweep (CE)
     if curr["low"] < pdl and curr["close"] > pdl and vol_confirmed:
         lower_wick = min(curr["open"], curr["close"]) - curr["low"]
         body = abs(curr["close"] - curr["open"])
@@ -232,11 +234,10 @@ def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
 
 
 def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) -> dict:
-    """Strategy 4: Intraday Indian F&O Framework (Setup A Breakout/Retest & Setup B Pullback)."""
+    """Strategy 4: Intraday Indian F&O Framework."""
     if len(df_5m) < 25 or len(df_15m) < 20:
         return {"signal": None}
 
-    # 15-Minute Trend Filters
     df_15 = df_15m.copy()
     df_15["vwap"] = calculate_vwap(df_15)
     c_15 = df_15.iloc[-1]
@@ -245,7 +246,6 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
     trend_15m_bullish = (c_15["close"] > c_15["vwap"]) and (c_15["vwap"] >= p_15["vwap"])
     trend_15m_bearish = (c_15["close"] < c_15["vwap"]) and (c_15["vwap"] <= p_15["vwap"])
 
-    # 5-Minute Entry Indicators
     df_5 = df_5m.copy()
     df_5["vwap"] = calculate_vwap(df_5)
     df_5["ema9"] = calculate_ema(df_5["close"], 9)
@@ -259,9 +259,7 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
     range_high = df_5["high"].iloc[-21:-1].max()
     range_low = df_5["low"].iloc[-21:-1].min()
 
-    # ----------------------------------------------------
     # SETUP A: BREAKOUT & RETEST (CE)
-    # ----------------------------------------------------
     if trend_15m_bullish and curr["close"] > curr["vwap"]:
         breakout_candidates = [
             i for i in range(2, min(8, len(df_5)))
@@ -283,9 +281,7 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                         "notes": f"5m Retest Confirmed @ ₹{range_high:.2f} | 15m VWAP Rising | Risk: {risk:.2f} pts",
                     }
 
-    # ----------------------------------------------------
     # SETUP A: BREAKDOWN & RETEST (PE)
-    # ----------------------------------------------------
     if trend_15m_bearish and curr["close"] < curr["vwap"]:
         breakdown_candidates = [
             i for i in range(2, min(8, len(df_5)))
@@ -307,9 +303,7 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                         "notes": f"5m Breakdown Retest Failed @ ₹{range_low:.2f} | 15m VWAP Falling | Risk: {risk:.2f} pts",
                     }
 
-    # ----------------------------------------------------
     # SETUP B: TREND PULLBACK (CE)
-    # ----------------------------------------------------
     if trend_15m_bullish and curr["close"] > curr["vwap"]:
         ema_aligned = curr["ema9"] > curr["ema21"]
         pulled_to_ema21 = abs(curr["low"] - curr["ema21"]) <= (curr["close"] * 0.003) or (curr["low"] <= curr["ema21"] and curr["close"] >= curr["ema21"])
@@ -330,9 +324,7 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
                     "notes": f"Pullback to EMA 21 | RSI: {curr['rsi']:.1f} ↗ | Risk: {risk:.2f} pts",
                 }
 
-    # ----------------------------------------------------
     # SETUP B: TREND PULLBACK (PE)
-    # ----------------------------------------------------
     if trend_15m_bearish and curr["close"] < curr["vwap"]:
         ema_aligned = curr["ema9"] < curr["ema21"]
         pulled_to_ema21 = abs(curr["high"] - curr["ema21"]) <= (curr["close"] * 0.003) or (curr["high"] >= curr["ema21"] and curr["close"] <= curr["ema21"])
@@ -357,7 +349,7 @@ def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) 
 
 
 # ==============================================================================
-# 4. 100+ STOCKS & INDICES UNIVERSE (5 BALANCED PARALLEL BLOCKS)
+# 4. WATCHLIST UNIVERSE
 # ==============================================================================
 WATCHLIST_BLOCKS = {
     1: {
@@ -589,7 +581,7 @@ def generate_eod_summary(get_market_data_func) -> str:
 
 
 # ==============================================================================
-# 6. SCANNER EXECUTION
+# 6. SCANNER EXECUTION & LIVE CONTINUOUS LOOP
 # ==============================================================================
 def fetch_mock_data(symbol: str):
     """Generates aligned 15m and 5m market data. Replace with your live broker API feed."""
@@ -674,10 +666,52 @@ def scan_all_blocks():
         scan_block(block_id)
 
 
+def run_continuous_session():
+    """Runs continuously from 09:15 AM to 03:15 PM IST."""
+    ist = pytz.timezone("Asia/Kolkata")
+    logging.info("Starting continuous live market scanning loop (IST timezone)...")
+
+    market_open = (9, 15)
+    market_close = (15, 15)
+    eod_sent = False
+
+    while True:
+        now_ist = datetime.now(ist)
+        current_time = (now_ist.hour, now_ist.minute)
+        weekday = now_ist.weekday()  # 0 = Monday, 4 = Friday
+
+        logging.info(f"Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S')} (Day: {weekday})")
+
+        # During live trading hours (Mon-Fri 09:15 - 15:15 IST)
+        if weekday < 5 and market_open <= current_time <= market_close:
+            logging.info("--- [LIVE SCAN CYCLE STARTED] ---")
+            scan_all_blocks()
+            logging.info("--- [LIVE SCAN COMPLETED] Sleeping for 15 minutes... ---")
+            time.sleep(900)
+
+        # Market close reached (Past 3:15 PM IST)
+        elif weekday < 5 and current_time > market_close:
+            if not eod_sent:
+                logging.info("Market session closed. Generating and dispatching EOD report...")
+                summary_msg = generate_eod_summary(fetch_mock_data)
+                send_telegram_alert(summary_msg)
+                eod_sent = True
+            logging.info("Trading day finished. Shutting down runner.")
+            break
+
+        # Outside regular trading hours (e.g. testing manual dispatch at night or weekends)
+        else:
+            logging.warning("Outside regular trading hours (09:15 - 15:15 IST Mon-Fri). Performing a single test scan...")
+            scan_all_blocks()
+            break
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--eod":
         summary_msg = generate_eod_summary(fetch_mock_data)
         send_telegram_alert(summary_msg)
+    elif len(sys.argv) > 1 and sys.argv[1] == "--live":
+        run_continuous_session()
     elif len(sys.argv) > 1 and sys.argv[1] == "--all":
         scan_all_blocks()
     elif len(sys.argv) > 1 and sys.argv[1].isdigit():
