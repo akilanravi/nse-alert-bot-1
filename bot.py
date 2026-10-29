@@ -1,4 +1,138 @@
+import csv
+import logging
+import os
+import time
+from datetime import datetime
+import numpy as np
+import pandas as pd
+import pytz
+import requests
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ==============================================================================
+# 1. DUAL TELEGRAM RECIPIENTS (TOKEN + CHAT ID PAIRS)
+# ==============================================================================
+TELEGRAM_RECIPIENTS = [
+    {
+        "token": "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k",
+        "chat_id": "846124589",
+    },
+    {
+        "token": "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms",
+        "chat_id": "8865083462",
+    },
+]
+
+LOG_FILE = "trade_log.csv"
+
+
+def send_telegram_alert(message: str):
+    """Dispatches HTML-formatted alerts to each configured bot token & chat_id pair."""
+    if not TELEGRAM_RECIPIENTS:
+        logging.warning("No Telegram recipients configured. Message:\n" + message)
+        return
+
+    for item in TELEGRAM_RECIPIENTS:
+        token = item.get("token")
+        chat_id = item.get("chat_id")
+        if not token or not chat_id:
+            continue
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            logging.info(f"Alert sent successfully to chat_id: {chat_id}")
+        except Exception as e:
+            logging.error(f"Failed to dispatch Telegram alert to {chat_id}: {e}")
+
+
+# ==============================================================================
+# 2. TECHNICAL INDICATORS
+# ==============================================================================
+def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    tr = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"] - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    return tr.rolling(window=period).mean()
+
+
+def calculate_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    delta = df["close"].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / (loss + 1e-9)
+    return 100 - (100 / (1 + rs))
+
+
+def calculate_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3.0):
+    atr = calculate_atr(df, period)
+    hl2 = (df["high"] + df["low"]) / 2
+    upperband = hl2 + (multiplier * atr)
+    lowerband = hl2 - (multiplier * atr)
+
+    trend = pd.Series(1, index=df.index)
+    for i in range(1, len(df)):
+        if df["close"].iloc[i] > upperband.iloc[i - 1]:
+            trend.iloc[i] = 1
+        elif df["close"].iloc[i] < lowerband.iloc[i - 1]:
+            trend.iloc[i] = -1
+        else:
+            trend.iloc[i] = trend.iloc[i - 1]
+            if trend.iloc[i] == 1 and lowerband.iloc[i] < lowerband.iloc[i - 1]:
+                lowerband.iloc[i] = lowerband.iloc[i - 1]
+            if trend.iloc[i] == -1 and upperband.iloc[i] > upperband.iloc[i - 1]:
+                upperband.iloc[i] = upperband.iloc[i - 1]
+    return trend
+
+
+def calculate_vwap(df: pd.DataFrame) -> pd.Series:
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3.0
+    cum_vol_price = (typical_price * df["volume"]).cumsum()
+    cum_vol = df["volume"].cumsum()
+    return cum_vol_price / (cum_vol + 1e-9)
+
+
+def calculate_ema(series: pd.Series, span: int) -> pd.Series:
+    return series.ewm(span=span, adjust=False).mean()
+
+
+# ==============================================================================
+# 3. STRATEGY ENGINES (S1, S2, S3, S4)
+# ==============================================================================
+def evaluate_strategy_1(df: pd.DataFrame) -> dict:
+    if len(df) < 20:
+        return {"signal": None}
+    df = df.copy()
+    df["atr"] = calculate_atr(df, 14)
+    df["rsi"] = calculate_rsi(df, 14)
+    df["supertrend"] = calculate_supertrend(df, 10, 3.0)
+
+    curr = df.iloc[-1]
+    prev = df.iloc[-2]
+    atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
+
+    # Bullish CE
+    if curr["supertrend"] == 1 and prev["supertrend"] == -1 and curr["rsi"] >= 55:
+        sl = round(curr["low"] - (0.8 * atr_val), 2)
+        risk = curr["close"] - sl
+        if risk > 0:
+            return {
+                "strategy": "S1 (Momentum Breakout)",
+                "signal": "BUY / CE",
+                "entry": round(curr["close"], 2),
+                "sl": sl,
+                "tp1": round(curr["close"] + (1.2 * risk), 2),
+                "tp2": round(curr["close"] + (2.5 * risk), 2),
                 "notes": f"Supertrend Bullish Flip | RSI: {round(curr['rsi'], 1)}",
             }
 
