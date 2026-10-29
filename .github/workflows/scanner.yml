@@ -2,7 +2,7 @@ name: Multi-Strategy Real-Time Trading Bot
 
 on:
   schedule:
-    # 03:45 UTC = 09:15 AM IST (Starts at market open Mon-Fri)
+    # 03:45 UTC = 09:15 AM IST (Mon-Fri)
     - cron: '45 3 * * 1-5'
   workflow_dispatch:
 
@@ -12,7 +12,7 @@ permissions:
 jobs:
   realtime-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 375 # Keeps runner alive for the full 6 hours (09:15 AM to 03:30 PM IST)
+    timeout-minutes: 375 # Keeps runner alive for the entire 6 hours
 
     steps:
       - name: Checkout Repository
