@@ -107,10 +107,15 @@ def calculate_ema(series: pd.Series, span: int) -> pd.Series:
 
 
 # ==============================================================================
-# 3. STRATEGY ENGINES (S1, S2, S3, S4)
+# 3. STRATEGY ENGINES (S1: Supertrend + RSI + Pivot, S2: Pivot Pullback Old)
 # ==============================================================================
-def evaluate_strategy_1(df: pd.DataFrame) -> dict:
-    if len(df) < 20:
+def evaluate_strategy_1(df: pd.DataFrame, pivot_level: float) -> dict:
+    """
+    Strategy 1: Supertrend + RSI + Pivot Point Confluence
+    - Bullish: Supertrend Bullish (1), RSI >= 50, Price > Pivot Level
+    - Bearish: Supertrend Bearish (-1), RSI <= 50, Price < Pivot Level
+    """
+    if len(df) < 20 or pd.isna(pivot_level):
         return {"signal": None}
     df = df.copy()
     df["atr"] = calculate_atr(df, 14)
@@ -121,39 +126,43 @@ def evaluate_strategy_1(df: pd.DataFrame) -> dict:
     prev = df.iloc[-2]
     atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
 
-    # Bullish CE
-    if curr["supertrend"] == 1 and prev["supertrend"] == -1 and curr["rsi"] >= 55:
-        sl = round(curr["low"] - (0.8 * atr_val), 2)
+    # Bullish Confluence: Supertrend turns bullish (or is bullish) with RSI >= 50 and price above Pivot
+    if curr["supertrend"] == 1 and curr["rsi"] >= 50 and curr["close"] > pivot_level:
+        sl = round(max(curr["low"] - (0.8 * atr_val), pivot_level - (0.3 * atr_val)), 2)
         risk = curr["close"] - sl
         if risk > 0:
             return {
-                "strategy": "S1 (Momentum Breakout)",
+                "strategy": "S1 (Supertrend + RSI + Pivot)",
                 "signal": "BUY / CE",
                 "entry": round(curr["close"], 2),
                 "sl": sl,
                 "tp1": round(curr["close"] + (1.2 * risk), 2),
                 "tp2": round(curr["close"] + (2.5 * risk), 2),
-                "notes": f"Supertrend Bullish Flip | RSI: {round(curr['rsi'], 1)}",
+                "notes": f"ST Bullish | RSI: {round(curr['rsi'], 1)} | Above Pivot: ₹{pivot_level}",
             }
 
-    # Bearish PE
-    if curr["supertrend"] == -1 and prev["supertrend"] == 1 and curr["rsi"] <= 45:
-        sl = round(curr["high"] + (0.8 * atr_val), 2)
+    # Bearish Confluence: Supertrend turns bearish (or is bearish) with RSI <= 50 and price below Pivot
+    if curr["supertrend"] == -1 and curr["rsi"] <= 50 and curr["close"] < pivot_level:
+        sl = round(min(curr["high"] + (0.8 * atr_val), pivot_level + (0.3 * atr_val)), 2)
         risk = sl - curr["close"]
         if risk > 0:
             return {
-                "strategy": "S1 (Momentum Breakout)",
+                "strategy": "S1 (Supertrend + RSI + Pivot)",
                 "signal": "SELL / PE",
                 "entry": round(curr["close"], 2),
                 "sl": sl,
                 "tp1": round(curr["close"] - (1.2 * risk), 2),
                 "tp2": round(curr["close"] - (2.5 * risk), 2),
-                "notes": f"Supertrend Bearish Flip | RSI: {round(curr['rsi'], 1)}",
+                "notes": f"ST Bearish | RSI: {round(curr['rsi'], 1)} | Below Pivot: ₹{pivot_level}",
             }
+
     return {"signal": None}
 
 
 def evaluate_strategy_2(df: pd.DataFrame, pivot_level: float) -> dict:
+    """
+    Strategy 2: Old Pivot Pullback Strategy
+    """
     if len(df) < 20 or pd.isna(pivot_level):
         return {"signal": None}
     df = df.copy()
@@ -177,163 +186,6 @@ def evaluate_strategy_2(df: pd.DataFrame, pivot_level: float) -> dict:
                 "tp2": round(curr["close"] + (3.0 * risk), 2),
                 "notes": f"Pivot Support Test @ ₹{pivot_level}",
             }
-    return {"signal": None}
-
-
-def evaluate_strategy_3(df_15m: pd.DataFrame, pdh: float, pdl: float) -> dict:
-    if len(df_15m) < 20 or pd.isna(pdh) or pd.isna(pdl):
-        return {"signal": None}
-    df = df_15m.copy()
-    df["atr"] = calculate_atr(df, 14)
-    df["vol_ma"] = df["volume"].rolling(window=10).mean()
-
-    curr = df.iloc[-1]
-    atr_val = curr["atr"] if not pd.isna(curr["atr"]) else (curr["high"] - curr["low"])
-    vol_confirmed = curr["volume"] >= (curr["vol_ma"] * 1.05)
-
-    if curr["high"] > pdh and curr["close"] < pdh and vol_confirmed:
-        upper_wick = curr["high"] - max(curr["open"], curr["close"])
-        body = abs(curr["close"] - curr["open"])
-        if upper_wick >= (body * 0.5):
-            sl = round(curr["high"] + (0.5 * atr_val), 2)
-            risk = sl - curr["close"]
-            if risk > 0:
-                return {
-                    "strategy": "S3 (Daily Level Trap)",
-                    "signal": "SELL / PE",
-                    "entry": round(curr["close"], 2),
-                    "sl": sl,
-                    "tp1": round(curr["close"] - (1.3 * risk), 2),
-                    "tp2": round(curr["close"] - (2.5 * risk), 2),
-                    "notes": f"PDH Sweep & Reversal (PDH: ₹{pdh})",
-                }
-
-    if curr["low"] < pdl and curr["close"] > pdl and vol_confirmed:
-        lower_wick = min(curr["open"], curr["close"]) - curr["low"]
-        body = abs(curr["close"] - curr["open"])
-        if lower_wick >= (body * 0.5):
-            sl = round(curr["low"] - (0.5 * atr_val), 2)
-            risk = curr["close"] - sl
-            if risk > 0:
-                return {
-                    "strategy": "S3 (Daily Level Trap)",
-                    "signal": "BUY / CE",
-                    "entry": round(curr["close"], 2),
-                    "sl": sl,
-                    "tp1": round(curr["close"] + (1.3 * risk), 2),
-                    "tp2": round(curr["close"] + (2.5 * risk), 2),
-                    "notes": f"PDL Sweep & Reversal (PDL: ₹{pdl})",
-                }
-    return {"signal": None}
-
-
-def evaluate_strategy_4(symbol: str, df_5m: pd.DataFrame, df_15m: pd.DataFrame) -> dict:
-    if len(df_5m) < 25 or len(df_15m) < 20:
-        return {"signal": None}
-
-    df_15 = df_15m.copy()
-    df_15["vwap"] = calculate_vwap(df_15)
-    c_15 = df_15.iloc[-1]
-    p_15 = df_15.iloc[-2]
-
-    trend_15m_bullish = (c_15["close"] > c_15["vwap"]) and (c_15["vwap"] >= p_15["vwap"])
-    trend_15m_bearish = (c_15["close"] < c_15["vwap"]) and (c_15["vwap"] <= p_15["vwap"])
-
-    df_5 = df_5m.copy()
-    df_5["vwap"] = calculate_vwap(df_5)
-    df_5["ema9"] = calculate_ema(df_5["close"], 9)
-    df_5["ema21"] = calculate_ema(df_5["close"], 21)
-    df_5["rsi"] = calculate_rsi(df_5, 14)
-    df_5["vol_ma20"] = df_5["volume"].rolling(20).mean()
-
-    curr = df_5.iloc[-1]
-    prev = df_5.iloc[-2]
-
-    range_high = df_5["high"].iloc[-21:-1].max()
-    range_low = df_5["low"].iloc[-21:-1].min()
-
-    if trend_15m_bullish and curr["close"] > curr["vwap"]:
-        breakout_candidates = [
-            i for i in range(2, min(8, len(df_5)))
-            if df_5["close"].iloc[-i] > range_high and df_5["volume"].iloc[-i] > df_5["vol_ma20"].iloc[-i]
-        ]
-        if breakout_candidates:
-            if curr["low"] <= (range_high * 1.002) and curr["close"] > range_high and curr["close"] > curr["open"]:
-                retest_swing_low = df_5["low"].iloc[-max(breakout_candidates):].min()
-                sl = round(min(retest_swing_low, range_high * 0.998), 2)
-                risk = curr["close"] - sl
-                if risk > 0:
-                    return {
-                        "strategy": "S4 (Breakout & Retest)",
-                        "signal": "BUY / CE",
-                        "entry": round(curr["close"], 2),
-                        "sl": sl,
-                        "tp1": round(curr["close"] + (1.0 * risk), 2),
-                        "tp2": round(curr["close"] + (2.0 * risk), 2),
-                        "notes": f"5m Retest Confirmed @ ₹{range_high:.2f} | 15m VWAP Rising | Risk: {risk:.2f} pts",
-                    }
-
-    if trend_15m_bearish and curr["close"] < curr["vwap"]:
-        breakdown_candidates = [
-            i for i in range(2, min(8, len(df_5)))
-            if df_5["close"].iloc[-i] < range_low and df_5["volume"].iloc[-i] > df_5["vol_ma20"].iloc[-i]
-        ]
-        if breakdown_candidates:
-            if curr["high"] >= (range_low * 0.998) and curr["close"] < range_low and curr["close"] < curr["open"]:
-                retest_swing_high = df_5["high"].iloc[-max(breakdown_candidates):].max()
-                sl = round(max(retest_swing_high, range_low * 1.002), 2)
-                risk = sl - curr["close"]
-                if risk > 0:
-                    return {
-                        "strategy": "S4 (Breakout & Retest)",
-                        "signal": "SELL / PE",
-                        "entry": round(curr["close"], 2),
-                        "sl": sl,
-                        "tp1": round(curr["close"] - (1.0 * risk), 2),
-                        "tp2": round(curr["close"] - (2.0 * risk), 2),
-                        "notes": f"5m Breakdown Retest Failed @ ₹{range_low:.2f} | 15m VWAP Falling | Risk: {risk:.2f} pts",
-                    }
-
-    if trend_15m_bullish and curr["close"] > curr["vwap"]:
-        ema_aligned = curr["ema9"] > curr["ema21"]
-        pulled_to_ema21 = abs(curr["low"] - curr["ema21"]) <= (curr["close"] * 0.003) or (curr["low"] <= curr["ema21"] and curr["close"] >= curr["ema21"])
-        rsi_turning_up = curr["rsi"] > prev["rsi"] and curr["rsi"] >= 50
-        bullish_close = curr["close"] > curr["open"] and curr["close"] > prev["high"]
-
-        if ema_aligned and pulled_to_ema21 and rsi_turning_up and bullish_close:
-            sl = round(df_5["low"].iloc[-5:].min(), 2)
-            risk = curr["close"] - sl
-            if risk > 0:
-                return {
-                    "strategy": "S4 (Trend Pullback)",
-                    "signal": "BUY / CE",
-                    "entry": round(curr["close"], 2),
-                    "sl": sl,
-                    "tp1": round(curr["close"] + (1.0 * risk), 2),
-                    "tp2": round(curr["close"] + (2.0 * risk), 2),
-                    "notes": f"Pullback to EMA 21 | RSI: {curr['rsi']:.1f} ↗ | Risk: {risk:.2f} pts",
-                }
-
-    if trend_15m_bearish and curr["close"] < curr["vwap"]:
-        ema_aligned = curr["ema9"] < curr["ema21"]
-        pulled_to_ema21 = abs(curr["high"] - curr["ema21"]) <= (curr["close"] * 0.003) or (curr["high"] >= curr["ema21"] and curr["close"] <= curr["ema21"])
-        rsi_turning_down = curr["rsi"] < prev["rsi"] and curr["rsi"] <= 50
-        bearish_close = curr["close"] < curr["open"] and curr["close"] < prev["low"]
-
-        if ema_aligned and pulled_to_ema21 and rsi_turning_down and bearish_close:
-            sl = round(df_5["high"].iloc[-5:].max(), 2)
-            risk = sl - curr["close"]
-            if risk > 0:
-                return {
-                    "strategy": "S4 (Trend Pullback)",
-                    "signal": "SELL / PE",
-                    "entry": round(curr["close"], 2),
-                    "sl": sl,
-                    "tp1": round(curr["close"] - (1.0 * risk), 2),
-                    "tp2": round(curr["close"] - (2.0 * risk), 2),
-                    "notes": f"Pullback to EMA 21 | RSI: {curr['rsi']:.1f} ↘ | Risk: {risk:.2f} pts",
-                }
-
     return {"signal": None}
 
 
@@ -464,7 +316,7 @@ def record_trade_entry(symbol: str, category: str, setup: dict) -> bool:
 
 
 # ==============================================================================
-# 6. NON-STOP REAL-TIME LOOP
+# 6. SCANNER EXECUTION
 # ==============================================================================
 def fetch_mock_data(symbol: str):
     np.random.seed(abs(hash(symbol) + int(time.time() // 30)) % 10000)
@@ -500,28 +352,18 @@ def scan_single_symbol(symbol: str, category: str):
     try:
         df_15m, df_5m, pdh, pdl, pivot = fetch_mock_data(symbol)
 
-        res_s4 = evaluate_strategy_4(symbol, df_5m, df_15m)
-        if res_s4["signal"]:
-            if record_trade_entry(symbol, category, res_s4):
-                send_telegram_alert(format_alert_message(symbol, category, res_s4))
+        # Strategy 1: Supertrend + RSI + Pivot Point confluence
+        res_s1 = evaluate_strategy_1(df_15m, pivot)
+        if res_s1["signal"]:
+            if record_trade_entry(symbol, category, res_s1):
+                send_telegram_alert(format_alert_message(symbol, category, res_s1))
             return
 
-        res_s3 = evaluate_strategy_3(df_15m, pdh, pdl)
-        if res_s3["signal"]:
-            if record_trade_entry(symbol, category, res_s3):
-                send_telegram_alert(format_alert_message(symbol, category, res_s3))
-            return
-
+        # Strategy 2: Old Pivot Pullback Strategy
         res_s2 = evaluate_strategy_2(df_15m, pivot)
         if res_s2["signal"]:
             if record_trade_entry(symbol, category, res_s2):
                 send_telegram_alert(format_alert_message(symbol, category, res_s2))
-            return
-
-        res_s1 = evaluate_strategy_1(df_15m)
-        if res_s1["signal"]:
-            if record_trade_entry(symbol, category, res_s1):
-                send_telegram_alert(format_alert_message(symbol, category, res_s1))
             return
 
     except Exception as e:
@@ -552,7 +394,6 @@ def run_continuous_live():
         # Regular trading hours: Mon-Fri 09:15 to 15:15 IST
         if weekday < 5 and market_open <= current_time <= market_close:
             scan_all_blocks()
-            # 5-second pause between cycles to prevent API/CPU locking
             time.sleep(5)
 
         # 3:15 PM reached: cleanly exit
