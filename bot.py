@@ -465,7 +465,7 @@ def record_trade_entry(symbol: str, category: str, setup: dict) -> bool:
 
 
 # ==============================================================================
-# 6. REAL-TIME CONTINUOUS RUNNER
+# 6. CONTINUOUS REAL-TIME SCANNER (NO 15-MIN SLEEP, NO EOD REPORT)
 # ==============================================================================
 def fetch_mock_data(symbol: str):
     np.random.seed(abs(hash(symbol) + int(time.time() // 30)) % 10000)
@@ -501,24 +501,28 @@ def scan_single_symbol(symbol: str, category: str):
     try:
         df_15m, df_5m, pdh, pdl, pivot = fetch_mock_data(symbol)
 
+        # Strategy 4: Intraday CALL/PUT Framework
         res_s4 = evaluate_strategy_4(symbol, df_5m, df_15m)
         if res_s4["signal"]:
             if record_trade_entry(symbol, category, res_s4):
                 send_telegram_alert(format_alert_message(symbol, category, res_s4))
             return
 
+        # Strategy 3: Daily Level Trap & Sweeps
         res_s3 = evaluate_strategy_3(df_15m, pdh, pdl)
         if res_s3["signal"]:
             if record_trade_entry(symbol, category, res_s3):
                 send_telegram_alert(format_alert_message(symbol, category, res_s3))
             return
 
+        # Strategy 2: Pivot Pullback
         res_s2 = evaluate_strategy_2(df_15m, pivot)
         if res_s2["signal"]:
             if record_trade_entry(symbol, category, res_s2):
                 send_telegram_alert(format_alert_message(symbol, category, res_s2))
             return
 
+        # Strategy 1: Momentum Breakout
         res_s1 = evaluate_strategy_1(df_15m)
         if res_s1["signal"]:
             if record_trade_entry(symbol, category, res_s1):
@@ -541,7 +545,7 @@ def run_continuous_live():
     """Continuously cycles through all instruments non-stop between 09:15 AM and 03:15 PM IST."""
     ist = pytz.timezone("Asia/Kolkata")
     logging.info("Starting REAL-TIME continuous scanning loop (09:15 AM to 03:15 PM IST)...")
-
+    
     market_open = (9, 15)
     market_close = (15, 15)
 
@@ -553,10 +557,10 @@ def run_continuous_live():
         # Active trading hours: Monday - Friday between 09:15 and 15:15 IST
         if weekday < 5 and market_open <= current_time <= market_close:
             scan_all_blocks()
-            # 5-second buffer between full watchlist cycles to avoid CPU throttling
+            # 5-second buffer between full watchlist cycles to avoid CPU thrashing
             time.sleep(5)
 
-        # Once 3:15 PM IST is reached, shut down
+        # Once 3:15 PM IST is reached, terminate session
         elif weekday < 5 and current_time > market_close:
             logging.info("Market reached 03:15 PM IST. Trading session finished. Exiting.")
             break
