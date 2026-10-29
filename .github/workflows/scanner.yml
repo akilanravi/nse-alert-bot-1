@@ -2,8 +2,12 @@ name: Multi-Strategy Trading Bot
 
 on:
   schedule:
-    # 03:45 UTC to 09:30 UTC = 09:15 AM to 03:00 PM IST (Every 15 min, Mon-Fri)
-    - cron: '*/15 3-9 * * 1-5'
+    # 03:45 UTC = 09:15 AM IST (First market check)
+    - cron: '45 3 * * 1-5'
+    # 04:00 UTC to 08:45 UTC = 09:30 AM to 02:15 PM IST (Every 15 min, Mon-Fri)
+    - cron: '*/15 4-8 * * 1-5'
+    # 09:00, 09:15, 09:30 UTC = 02:30 PM, 02:45 PM, 03:00 PM IST
+    - cron: '0,15,30 9 * * 1-5'
     # 09:45 UTC = 03:15 PM IST (Runs the End-of-Day reconciliation report)
     - cron: '45 9 * * 1-5'
   workflow_dispatch:
@@ -13,13 +17,9 @@ permissions:
 
 jobs:
   scan-market:
-    # Only run matrix scan during regular market trading hours (skip at 09:45 UTC)
+    # Run scan for regular checks (skip at 09:45 UTC unless manually triggered)
     if: github.event.schedule != '45 9 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        block_id: [1, 2, 3, 4, 5]
-      fail-fast: false
 
     steps:
       - name: Checkout Repository
@@ -33,8 +33,9 @@ jobs:
       - name: Install Dependencies
         run: pip install pandas numpy requests
 
-      - name: Run Block Scanner
-        run: python bot.py ${{ matrix.block_id }}
+      # Runs all sector blocks sequentially to eliminate Git push conflicts
+      - name: Run Full Watchlist Scanner
+        run: python bot.py --all
 
       - name: Persist Trade Logs to GitHub
         run: |
@@ -48,7 +49,7 @@ jobs:
           fi
 
   eod-summary:
-    # Runs at 3:15 PM IST (09:45 UTC)
+    # Runs at 3:15 PM IST (09:45 UTC) or when manually dispatched
     if: github.event.schedule == '45 9 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: []
