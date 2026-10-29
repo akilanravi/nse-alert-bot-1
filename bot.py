@@ -4,17 +4,8 @@ import json
 import math
 import os
 import time
-import numpy as np
-import pandas as pd
 import pytz
 import requests
-import yfinance as yf
-
-# Prevent multi-thread SQLite file locking
-try:
-    yf.set_tz_cache_location("/tmp/yf_tz_cache")
-except Exception:
-    pass
 
 # =====================================================================
 # 1. DUAL TELEGRAM RECIPIENTS
@@ -153,8 +144,8 @@ def get_market_timing_status():
 def get_options_strikes(price, step, direction="CALL"):
     atm = int(round(price / step) * step) if step >= 1 else round(price / step) * step
     itm = (atm - step) if direction == "CALL" else (atm + step)
-    atm_fmt = int(atm) if isinstance(atm, (int, np.integer)) or (isinstance(atm, float) and atm.is_integer()) else f"{atm:.1f}"
-    itm_fmt = int(itm) if isinstance(itm, (int, np.integer)) or (isinstance(itm, float) and itm.is_integer()) else f"{itm:.1f}"
+    atm_fmt = int(atm) if isinstance(atm, int) or (isinstance(atm, float) and atm.is_integer()) else f"{atm:.1f}"
+    itm_fmt = int(itm) if isinstance(itm, int) or (isinstance(itm, float) and itm.is_integer()) else f"{itm:.1f}"
     return atm_fmt, itm_fmt
 
 # =====================================================================
@@ -167,7 +158,7 @@ def calculate_vwap(df):
     cum_vol = vol.cumsum()
     return cum_vol_price / cum_vol
 
-def calculate_atr(df, period=14):
+def calculate_atr(df, pd, period=14):
     high, low, close = df["High"], df["Low"], df["Close"]
     tr1 = high - low
     tr2 = (high - close.shift(1)).abs()
@@ -175,14 +166,14 @@ def calculate_atr(df, period=14):
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     return tr.ewm(alpha=1/period, adjust=False).mean()
 
-def calculate_rsi(series, period=14):
+def calculate_rsi(series, np, period=14):
     delta = series.diff()
     gain = delta.where(delta > 0, 0).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
     rs = gain / loss.replace(0, np.nan)
     return 100 - (100 / (1 + rs))
 
-def calculate_supertrend(df, period=10, multiplier=3.0):
+def calculate_supertrend(df, pd, np, period=10, multiplier=3.0):
     high, low, close = df["High"], df["Low"], df["Close"]
     tr1 = high - low
     tr2 = (high - close.shift(1)).abs()
@@ -219,7 +210,7 @@ def calculate_supertrend(df, period=10, multiplier=3.0):
 
     return st, direction
 
-def get_daily_context_bulk(tickers):
+def get_daily_context_bulk(tickers, yf):
     try:
         data = yf.download(tickers, period="1mo", interval="1d", progress=False, group_by="ticker", threads=False)
         context = {}
@@ -245,6 +236,15 @@ def get_daily_context_bulk(tickers):
 # 5. DUAL SCAN ENGINE (STRATEGY 1 & STRATEGY 2 TOGETHER)
 # =====================================================================
 def run_scan(group_name, strike_dict):
+    import numpy as np
+    import pandas as pd
+    import yfinance as yf
+
+    try:
+        yf.set_tz_cache_location("/tmp/yf_tz_cache")
+    except Exception:
+        pass
+
     is_running, is_valid_entry, is_hard_squareoff, cur_time = get_market_timing_status()
     if not is_running and not is_hard_squareoff:
         print(f"[{group_name}] Outside active window 09:30 AM - 03:15 PM IST ({cur_time}).")
@@ -258,7 +258,7 @@ def run_scan(group_name, strike_dict):
     state_s1 = load_state(file_s1, watchlist)
     state_s2 = load_state(file_s2, watchlist)
     
-    context_map = get_daily_context_bulk(watchlist)
+    context_map = get_daily_context_bulk(watchlist, yf)
 
     try:
         intraday_data = yf.download(watchlist, period="3d", interval=TIMEFRAME, progress=False, group_by="ticker", threads=False)
@@ -276,14 +276,13 @@ def run_scan(group_name, strike_dict):
             pivot_p, r1, s1 = context_map[ticker]
             vwap_series = calculate_vwap(df)
             curr_vwap = float(vwap_series.iloc[-1])
-            atr_series = calculate_atr(df, period=14)
+            atr_series = calculate_atr(df, pd, period=14)
             current_atr = float(atr_series.iloc[-1])
             trail_buffer = round(current_atr * ATR_MULTIPLIER, 2)
 
-            # Supertrend 1 (10, 3.0) and Supertrend 2 (7, 2.0)
-            st1_val, st1_dir = calculate_supertrend(df, 10, 3.0)
-            st2_val, st2_dir = calculate_supertrend(df, 7, 2.0)
-            rsi_series = calculate_rsi(df["Close"], 14)
+            st1_val, st1_dir = calculate_supertrend(df, pd, np, 10, 3.0)
+            st2_val, st2_dir = calculate_supertrend(df, pd, np, 7, 2.0)
+            rsi_series = calculate_rsi(df["Close"], np, 14)
 
             curr_close = float(df["Close"].iloc[-1])
             curr_high = float(df["High"].iloc[-1])
@@ -294,10 +293,8 @@ def run_scan(group_name, strike_dict):
             avg_vol_20 = float(df["Volume"].rolling(window=20).mean().iloc[-1])
             vol_confirmed = curr_vol >= avg_vol_20
 
-            # Trend Directions
+            # Trend Flags
             st1_bull = st1_dir.iloc[-1] == 1
-            st1_bear = st1_dir.iloc[-1] == -1
-            st2_bull = st2_dir.iloc[-1] == 1
             st2_bear = st2_dir.iloc[-1] == -1
 
             # Flip Triggers
@@ -352,7 +349,6 @@ def run_scan(group_name, strike_dict):
                     tsl_hit = curr_close <= pos1["trailing_sl"]
                     pivot_broken = curr_close < pivot_p
 
-                    # CALL exit uses fast ST2 (7, 2.0) flip
                     if tsl_hit or st2_flipped_bear or pivot_broken:
                         reason = "Trailing SL Hit" if tsl_hit else ("Pivot P Broken" if pivot_broken else "ST2 Flip (7,2)")
                         pnl = curr_close - pos1["entry_price"]
@@ -373,7 +369,6 @@ def run_scan(group_name, strike_dict):
                     tsl_hit = curr_close >= pos1["trailing_sl"]
                     pivot_broken = curr_close > pivot_p
 
-                    # PUT exit uses slower ST1 (10, 3.0) flip
                     if tsl_hit or st1_flipped_bull or pivot_broken:
                         reason = "Trailing SL Hit" if tsl_hit else ("Pivot P Broken" if pivot_broken else "ST1 Flip (10,3)")
                         pnl = pos1["entry_price"] - curr_close
@@ -393,7 +388,6 @@ def run_scan(group_name, strike_dict):
                         else:
                             pos1["pending_stage"] = None
                     elif pos1.get("pending_stage") == "PENDING_PUT":
-                        # PUT confirmed using ST2 (7, 2.0)
                         if curr_close < float(st2_val.iloc[-1]) and curr_close < pivot_p:
                             atm, itm = get_options_strikes(curr_close, step, "PUT")
                             pos1.update({"in_trade": True, "pending_stage": None, "trade_type": "PUT", "entry_price": curr_close, "extreme_price": curr_low, "trailing_sl": round(curr_close + trail_buffer, 2), "trail_buffer": trail_buffer, "atm_strike": atm, "itm_strike": itm})
@@ -457,7 +451,6 @@ def run_scan(group_name, strike_dict):
                     vwap_exit = curr_close > curr_vwap
                     pivot_broken = curr_close > pivot_p
 
-                    # PUT exit uses ST1 (10, 3.0) flip
                     if tsl_hit or st1_flipped_bull or pivot_broken or vwap_exit or time_stop_hit:
                         reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakout" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST1 Flip (10,3)")))
                         pnl = pos2["entry_price"] - curr_close
