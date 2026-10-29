@@ -62,7 +62,7 @@ jobs:
           git diff --staged --quiet || git commit -m "Save dual states for ${{ matrix.group }} [skip ci]"
           git push || true
 
-  send-daily-report:
+send-daily-report:
     if: github.event.schedule == '35 11 * * 1-5' || github.event.inputs.action == 'report'
     runs-on: ubuntu-latest
     steps:
@@ -76,7 +76,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install pytz requests
+          pip install yfinance pandas numpy pytz requests
 
       - name: Generate & Dispatch 5 PM PnL Report
         run: |
