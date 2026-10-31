@@ -1,81 +1,184 @@
+
 import argparse
-import datetime
+import datetime as dt
 import json
 import math
 import os
 import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 import pytz
 import requests
+import yfinance as yf
 
-# =====================================================================
-# 1. DUAL TELEGRAM RECIPIENTS
-# =====================================================================
-TELEGRAM_RECIPIENTS = [
-    {
-        "token": "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k",
-        "chat_id": "846124589"
-    },
-    {
-        "token": "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms",
-        "chat_id": "8865083462"
-    }
-]
+# ============================================================
+# CONFIGURATION - YAHOO FINANCE ONLY
+# ============================================================
 
-# =====================================================================
-# 2. WATCHLIST SPLIT INTO 5 PARALLEL GROUPS (~20 TICKERS EACH)
-# =====================================================================
+IST = pytz.timezone("Asia/Kolkata")
+TIMEFRAME = "5m"
+ATR_MULTIPLIER = 1.5
+S2_MAX_HOLD_CANDLES = 6
+POLL_SECONDS = 300
+
+PIVOT_CACHE = {}
+SWING_CACHE = {}
+
+# ============================================================
+# FIVE ORIGINAL SECTOR GROUPS
+# ============================================================
+
 SECTOR_MAPS = {
     "indices_banking": {
-        "^NSEI": 50, "^NSEBANK": 100, "^BSESN": 100, "NIFTY_FIN_SERVICE.NS": 50,
-        "HDFCBANK.NS": 20, "ICICIBANK.NS": 10, "SBIN.NS": 10, "KOTAKBANK.NS": 20,
-        "AXISBANK.NS": 10, "BAJFINANCE.NS": 50, "BAJAJFINSV.NS": 20, "INDUSINDBK.NS": 20,
-        "FEDERALBNK.NS": 2.5, "AUBANK.NS": 10, "BANDHANBNK.NS": 2.5, "IDFCFIRSTB.NS": 1,
-        "PNB.NS": 1, "BANKBARODA.NS": 2.5, "CANBK.NS": 1, "CHOLAFIN.NS": 20,
-        "SHRIRAMFIN.NS": 25, "MUTHOOTFIN.NS": 20, "M&MFIN.NS": 5, "PFC.NS": 5,
-        "RECLTD.NS": 5, "SBICARD.NS": 10, "SBILIFE.NS": 20, "HDFCLIFE.NS": 10
+        "^NSEI": 50, "^NSEBANK": 100, "^BSESN": 100,
+        "NIFTY_FIN_SERVICE.NS": 50,
+        "HDFCBANK.NS": 20, "ICICIBANK.NS": 10,
+        "SBIN.NS": 10, "KOTAKBANK.NS": 20,
+        "AXISBANK.NS": 10, "BAJFINANCE.NS": 50,
+        "BAJAJFINSV.NS": 20, "INDUSINDBK.NS": 20,
+        "FEDERALBNK.NS": 2.5, "AUBANK.NS": 10,
+        "BANDHANBNK.NS": 2.5, "IDFCFIRSTB.NS": 1,
+        "PNB.NS": 1, "BANKBARODA.NS": 2.5,
+        "CANBK.NS": 1, "CHOLAFIN.NS": 20,
+        "SHRIRAMFIN.NS": 25, "MUTHOOTFIN.NS": 20,
+        "M&MFIN.NS": 5, "PFC.NS": 5,
+        "RECLTD.NS": 5, "SBICARD.NS": 10,
+        "SBILIFE.NS": 20, "HDFCLIFE.NS": 10
     },
+
     "it_energy": {
-        "TCS.NS": 50, "INFY.NS": 20, "HCLTECH.NS": 20, "WIPRO.NS": 5,
-        "TECHM.NS": 20, "PERSISTENT.NS": 50, "COFORGE.NS": 50, "MPHASIS.NS": 25, "NAUKRI.NS": 50,
-        "RELIANCE.NS": 20, "ONGC.NS": 2.5, "BPCL.NS": 5, "IOC.NS": 1,
-        "GAIL.NS": 2.5, "NTPC.NS": 5, "POWERGRID.NS": 2.5, "TATAPOWER.NS": 5,
-        "ADANIENT.NS": 50, "ADANIPORTS.NS": 20, "COALINDIA.NS": 5
+        "TCS.NS": 50, "INFY.NS": 20,
+        "HCLTECH.NS": 20, "WIPRO.NS": 5,
+        "TECHM.NS": 20, "PERSISTENT.NS": 50,
+        "COFORGE.NS": 50, "MPHASIS.NS": 25,
+        "NAUKRI.NS": 50, "RELIANCE.NS": 20,
+        "ONGC.NS": 2.5, "BPCL.NS": 5,
+        "IOC.NS": 1, "GAIL.NS": 2.5,
+        "NTPC.NS": 5, "POWERGRID.NS": 2.5,
+        "TATAPOWER.NS": 5, "ADANIENT.NS": 50,
+        "ADANIPORTS.NS": 20, "COALINDIA.NS": 5
     },
+
     "auto_metals": {
-        "MARUTI.NS": 100, "M&M.NS": 20, "BAJAJ-AUTO.NS": 100, "EICHERMOT.NS": 50,
-        "HEROMOTOCO.NS": 50, "TVSMOTOR.NS": 25, "BHARATFORG.NS": 20, "ASHOKLEY.NS": 2.5,
-        "MRF.NS": 500, "BALKRISIND.NS": 50, "APOLLOTYRE.NS": 5,
-        "TATASTEEL.NS": 1, "JSWSTEEL.NS": 10, "HINDALCO.NS": 10, "JINDALSTEL.NS": 10,
-        "VEDL.NS": 5, "NMDC.NS": 2.5, "SAIL.NS": 1, "NATIONALUM.NS": 2.5
+        "MARUTI.NS": 100, "M&M.NS": 20,
+        "BAJAJ-AUTO.NS": 100, "EICHERMOT.NS": 50,
+        "HEROMOTOCO.NS": 50, "TVSMOTOR.NS": 25,
+        "BHARATFORG.NS": 20, "ASHOKLEY.NS": 2.5,
+        "MRF.NS": 500, "BALKRISIND.NS": 50,
+        "APOLLOTYRE.NS": 5, "TATASTEEL.NS": 1,
+        "JSWSTEEL.NS": 10, "HINDALCO.NS": 10,
+        "JINDALSTEL.NS": 10, "VEDL.NS": 5,
+        "NMDC.NS": 2.5, "SAIL.NS": 1,
+        "NATIONALUM.NS": 2.5
     },
+
     "pharma_fmcg": {
-        "SUNPHARMA.NS": 20, "DRREDDY.NS": 50, "CIPLA.NS": 20, "DIVISLAB.NS": 50,
-        "APOLLOHOSP.NS": 50, "LUPIN.NS": 20, "AUROPHARMA.NS": 20, "BIOCON.NS": 5,
+        "SUNPHARMA.NS": 20, "DRREDDY.NS": 50,
+        "CIPLA.NS": 20, "DIVISLAB.NS": 50,
+        "APOLLOHOSP.NS": 50, "LUPIN.NS": 20,
+        "AUROPHARMA.NS": 20, "BIOCON.NS": 5,
         "TORNTPHARM.NS": 50, "ZYDUSLIFE.NS": 10,
-        "HINDUNILVR.NS": 20, "ITC.NS": 5, "NESTLEIND.NS": 20, "BRITANNIA.NS": 50,
-        "TATACONSUM.NS": 10, "DABUR.NS": 5, "MARICO.NS": 5, "COLPAL.NS": 25, "GODREJCP.NS": 10
+        "HINDUNILVR.NS": 20, "ITC.NS": 5,
+        "NESTLEIND.NS": 20, "BRITANNIA.NS": 50,
+        "TATACONSUM.NS": 10, "DABUR.NS": 5,
+        "MARICO.NS": 5, "COLPAL.NS": 25,
+        "GODREJCP.NS": 10
     },
+
     "telecom_infra_chem": {
-        "BHARTIARTL.NS": 10, "TRENT.NS": 50, "TITAN.NS": 50, "ASIANPAINT.NS": 20,
-        "BERGEPAINT.NS": 5, "INDIGO.NS": 50, "HAVELLS.NS": 20, "DIXON.NS": 100,
-        "POLYCAB.NS": 50, "VOLTAS.NS": 20, "JUBLFOOD.NS": 5,
-        "LT.NS": 50, "SIEMENS.NS": 50, "ABB.NS": 50, "BHEL.NS": 2.5,
-        "HAL.NS": 50, "BEL.NS": 2.5, "CUMMINSIND.NS": 50, "DLF.NS": 10,
-        "GODREJPROP.NS": 50, "OBEROIRLTY.NS": 20,
-        "ULTRACEMCO.NS": 100, "GRASIM.NS": 20, "AMBUJACEM.NS": 5, "SHREECEM.NS": 250,
-        "PIDILITIND.NS": 20, "SRF.NS": 25, "PIIND.NS": 50
+        "BHARTIARTL.NS": 10, "TRENT.NS": 50,
+        "TITAN.NS": 50, "ASIANPAINT.NS": 20,
+        "BERGEPAINT.NS": 5, "INDIGO.NS": 50,
+        "HAVELLS.NS": 20, "DIXON.NS": 100,
+        "POLYCAB.NS": 50, "VOLTAS.NS": 20,
+        "JUBLFOOD.NS": 5, "LT.NS": 50,
+        "SIEMENS.NS": 50, "ABB.NS": 50,
+        "BHEL.NS": 2.5, "HAL.NS": 50,
+        "BEL.NS": 2.5, "CUMMINSIND.NS": 50,
+        "DLF.NS": 10, "GODREJPROP.NS": 50,
+        "OBEROIRLTY.NS": 20, "ULTRACEMCO.NS": 100,
+        "GRASIM.NS": 20, "AMBUJACEM.NS": 5,
+        "SHREECEM.NS": 250, "PIDILITIND.NS": 20,
+        "SRF.NS": 25, "PIIND.NS": 50
     }
 }
 
-# 5-Minute Main Timeframe
-TIMEFRAME = "5m"
-ATR_MULTIPLIER = 1.5
-S2_MAX_HOLD_CANDLES = 6  # 30-min window on 5m bars[cite: 10]
 
-# =====================================================================
-# 3. STATE & UTILITIES
-# =====================================================================
-def get_default_item_state():
+# ============================================================
+# TELEGRAM
+# ============================================================
+
+def send_telegram(message):
+    recipients = [
+        (
+            os.getenv("8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k"),
+            os.getenv("846124589")
+        ),
+        (
+            os.getenv("8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms"),
+            os.getenv("8865083462")
+        )
+    ]
+
+    delivered = 0
+
+    for token, chat_id in recipients:
+        if not token or not chat_id:
+            continue
+
+        try:
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": message,
+                    "disable_web_page_preview": True
+                },
+                timeout=15
+            )
+            response.raise_for_status()
+            delivered += 1
+
+        except requests.RequestException as exc:
+            print(f"Telegram delivery error: {exc}")
+
+    if delivered == 0:
+        print("Telegram message was not delivered to any configured recipient.")
+
+
+# ============================================================
+# MARKET TIME
+# ============================================================
+
+def current_time():
+    return dt.datetime.now(IST)
+
+
+def market_status():
+    now = current_time()
+    minutes = now.hour * 60 + now.minute
+
+    if now.weekday() >= 5:
+        return False, False, False, now
+
+    market_start = 9 * 60 + 30
+    market_close = 15 * 60 + 15
+    entry_close = 15 * 60
+
+    running = market_start <= minutes <= market_close
+    entry_allowed = market_start <= minutes <= entry_close
+    squareoff = minutes >= market_close
+
+    return running, entry_allowed, squareoff, now
+
+
+# ============================================================
+# TRADE STATE
+# ============================================================
+
+def default_position():
     return {
         "in_trade": False,
         "trade_type": "",
@@ -88,661 +191,1335 @@ def get_default_item_state():
         "t1_hit": False,
         "atm_strike": 0,
         "itm_strike": 0,
-        "candles_held": 0
+        "candles_held": 0,
+        "entry_time": "",
+        "swing_signal_key": ""
     }
+
 
 def load_state(filename, symbols):
-    base_state = {
-        "positions": {s: get_default_item_state() for s in symbols},
-        "closed_trades": []
+    state = {
+        "positions": {
+            symbol: default_position() for symbol in symbols
+        },
+        "closed_trades": [],
+        "last_processed": {}
     }
-    if os.path.exists(filename):
-        try:
-            with open(filename, "r") as f:
-                saved = json.load(f)
-                if "positions" in saved:
-                    base_state["closed_trades"] = saved.get("closed_trades", [])
-                    pos = saved["positions"]
-                    for t in symbols:
-                        if t in pos:
-                            base_state["positions"][t] = pos[t]
-                else:
-                    for t in symbols:
-                        if t in saved:
-                            base_state["positions"][t] = saved[t]
-                return base_state
-        except Exception:
-            pass
-    return base_state
+
+    path = Path(filename)
+
+    if not path.exists():
+        return state
+
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+
+        state["closed_trades"] = saved.get("closed_trades", [])
+        state["last_processed"] = saved.get("last_processed", {})
+
+        for symbol in symbols:
+            if symbol in saved.get("positions", {}):
+                position = default_position()
+                position.update(saved["positions"][symbol])
+                state["positions"][symbol] = position
+
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"State load warning {filename}: {exc}")
+
+    return state
+
 
 def save_state(filename, state):
-    with open(filename, "w") as f:
-        json.dump(state, f, indent=2)
+    Path(filename).write_text(
+        json.dumps(state, indent=2, default=str),
+        encoding="utf-8"
+    )
 
-def send_telegram(text):
-    for recipient in TELEGRAM_RECIPIENTS:
-        url = f"https://api.telegram.org/bot{recipient['token']}/sendMessage"
-        payload = {"chat_id": recipient["chat_id"], "text": text, "parse_mode": "Markdown"}
-        try:
-            requests.post(url, json=payload, timeout=10)
-        except Exception as e:
-            print(f"Telegram error: {e}")
 
-def get_market_timing_status():
-    ist = pytz.timezone("Asia/Kolkata")
-    now_ist = datetime.datetime.now(ist)
-    if now_ist.weekday() > 4:
-        return False, False, False, "Weekend"
+# ============================================================
+# YAHOO FINANCE DATA
+# ============================================================
 
-    total_mins = now_ist.hour * 60 + now_ist.minute
-    window_start = 9 * 60 + 30   # 09:30 AM IST[cite: 10]
-    window_close = 15 * 60 + 15  # 03:15 PM IST[cite: 10]
+def download_data(ticker, period, interval):
+    try:
+        data = yf.download(
+            ticker,
+            period=period,
+            interval=interval,
+            auto_adjust=False,
+            progress=False,
+            threads=False
+        )
 
-    is_running = window_start <= total_mins <= window_close
-    is_hard_squareoff_time = total_mins >= window_close
-    is_valid_entry_time = (9 * 60 + 30 <= total_mins <= 15 * 60 + 0)
+        if data is None or data.empty:
+            print(f"{ticker}: no Yahoo data returned.")
+            return pd.DataFrame()
 
-    return is_running, is_valid_entry_time, is_hard_squareoff_time, now_ist.strftime('%H:%M:%S IST')
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
 
-def get_options_strikes(price, step, direction="CALL"):
-    atm = int(round(price / step) * step) if step >= 1 else round(price / step) * step
-    itm = (atm - step) if direction == "CALL" else (atm + step)
-    atm_fmt = int(atm) if isinstance(atm, int) or (isinstance(atm, float) and atm.is_integer()) else f"{atm:.1f}"
-    itm_fmt = int(itm) if isinstance(itm, int) or (isinstance(itm, float) and itm.is_integer()) else f"{itm:.1f}"
-    return atm_fmt, itm_fmt
+        data = data.loc[:, ~data.columns.duplicated()]
 
-# =====================================================================
-# 4. TECHNICAL INDICATORS
-# =====================================================================
-def calculate_session_vwap(df):
-    """Calculates True Session VWAP that resets daily at 09:15 AM IST."""
-    df_temp = df.copy()
-    typical_price = (df_temp["High"] + df_temp["Low"] + df_temp["Close"]) / 3.0
-    vol = df_temp["Volume"].replace(0, 1)
-    pv = typical_price * vol
+        required = ["Open", "High", "Low", "Close", "Volume"]
 
-    dates = df_temp.index.date
-    cum_pv = pv.groupby(dates).cumsum()
-    cum_vol = vol.groupby(dates).cumsum()
+        if not all(column in data.columns for column in required):
+            print(f"{ticker}: required OHLCV columns missing.")
+            return pd.DataFrame()
 
-    return cum_pv / cum_vol
+        data = data[required].dropna(
+            subset=["Open", "High", "Low", "Close"]
+        )
 
-def calculate_atr(df, pd, period=14):
-    high, low, close = df["High"], df["Low"], df["Close"]
-    tr1 = high - low
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    return tr.ewm(alpha=1/period, adjust=False).mean()
+        data = data[~data.index.duplicated(keep="last")]
 
-def calculate_rsi(series, np, period=20):
+        return data.sort_index()
+
+    except Exception as exc:
+        print(f"{ticker}: Yahoo download error: {exc}")
+        return pd.DataFrame()
+
+
+def completed_five_minute_bars(data):
+    if data.empty:
+        return data
+
+    index = data.index
+
+    if index.tz is None:
+        index = index.tz_localize(IST)
+    else:
+        index = index.tz_convert(IST)
+
+    result = data.copy()
+    result.index = index
+
+    cutoff = (
+        pd.Timestamp.now(tz=IST).floor("5min")
+        - pd.Timedelta(minutes=5)
+    )
+
+    return result.loc[result.index <= cutoff]
+
+
+# ============================================================
+# DAILY PIVOT, PDH AND PDL
+# ============================================================
+
+def daily_pivot(ticker):
+    today = current_time().date().isoformat()
+
+    if ticker in PIVOT_CACHE:
+        cached = PIVOT_CACHE[ticker]
+
+        if cached["date"] == today:
+            return cached["value"]
+
+    data = download_data(ticker, "1mo", "1d")
+
+    if len(data) < 2:
+        return None
+
+    previous = data.iloc[-2]
+
+    high = float(previous.High)
+    low = float(previous.Low)
+    close = float(previous.Close)
+
+    pivot = (high + low + close) / 3
+
+    result = {
+        "p": pivot,
+        "r1": 2 * pivot - low,
+        "s1": 2 * pivot - high,
+        "pdh": high,
+        "pdl": low
+    }
+
+    PIVOT_CACHE[ticker] = {
+        "date": today,
+        "value": result
+    }
+
+    return result
+
+
+# ============================================================
+# INDICATORS
+# ============================================================
+
+def calculate_atr(data, period=14):
+    previous_close = data.Close.shift()
+
+    true_range = pd.concat(
+        [
+            data.High - data.Low,
+            (data.High - previous_close).abs(),
+            (data.Low - previous_close).abs()
+        ],
+        axis=1
+    ).max(axis=1)
+
+    return true_range.ewm(
+        alpha=1 / period,
+        adjust=False
+    ).mean()
+
+
+def calculate_rsi(series, period=14):
     delta = series.diff()
-    gain = delta.where(delta > 0, 0).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+
+    gain = delta.clip(lower=0).ewm(
+        alpha=1 / period,
+        adjust=False
+    ).mean()
+
+    loss = (-delta.clip(upper=0)).ewm(
+        alpha=1 / period,
+        adjust=False
+    ).mean()
+
     rs = gain / loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
+    result = 100 - 100 / (1 + rs)
 
-def calculate_cci(df, period=20):
-    tp = (df["High"] + df["Low"] + df["Close"]) / 3.0
-    sma_tp = tp.rolling(window=period).mean()
-    mad = tp.rolling(window=period).apply(lambda x: (abs(x - x.mean())).mean(), raw=True)
-    mad = mad.replace(0, 0.0001)
-    return (tp - sma_tp) / (0.015 * mad)
+    return result.mask(loss.eq(0), 100)
 
-def calculate_williams_r(df, period=14):
-    hh = df["High"].rolling(window=period).max()
-    ll = df["Low"].rolling(window=period).min()
-    rng = hh - ll
-    rng = rng.replace(0, 0.0001)
-    return ((hh - df["Close"]) / rng) * -100.0
 
-def calculate_bollinger_bands(series, period=20, mult=2.0):
-    mid = series.rolling(window=period).mean()
-    std = series.rolling(window=period).std()
-    upper = mid + (mult * std)
-    lower = mid - (mult * std)
-    return mid, upper, lower
+def calculate_cci(data, period=20):
+    typical = (data.High + data.Low + data.Close) / 3
+    average = typical.rolling(period).mean()
 
-def calculate_supertrend(df, pd, np, period=10, multiplier=2.0):
-    high, low, close = df["High"], df["Low"], df["Close"]
-    tr1 = high - low
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/period, adjust=False).mean()
+    deviation = typical.rolling(period).apply(
+        lambda values: np.mean(
+            np.abs(values - np.mean(values))
+        ),
+        raw=True
+    )
 
-    hl2 = (high + low) / 2.0
-    upper = hl2 + (multiplier * atr)
-    lower = hl2 - (multiplier * atr)
+    return (
+        (typical - average)
+        / (0.015 * deviation.replace(0, np.nan))
+    )
 
-    st = pd.Series(index=df.index, dtype=float)
-    direction = pd.Series(index=df.index, dtype=int)
 
-    for i in range(1, len(df)):
-        curr_c = close.iloc[i]
-        prev_st = st.iloc[i-1] if not np.isnan(st.iloc[i-1]) else upper.iloc[i]
-        prev_dir = direction.iloc[i-1] if not np.isnan(direction.iloc[i-1]) else 1
+def calculate_williams_r(data, period=14):
+    highest = data.High.rolling(period).max()
+    lowest = data.Low.rolling(period).min()
 
-        if prev_dir == 1:
-            if curr_c < lower.iloc[i]:
-                direction.iloc[i] = -1
-                st.iloc[i] = upper.iloc[i]
-            else:
-                direction.iloc[i] = 1
-                st.iloc[i] = max(lower.iloc[i], prev_st)
+    return (
+        -100 * (highest - data.Close)
+        / (highest - lowest).replace(0, np.nan)
+    )
+
+
+def calculate_bollinger(series, period=20, multiplier=2):
+    middle = series.rolling(period).mean()
+    deviation = series.rolling(period).std()
+
+    upper = middle + multiplier * deviation
+    lower = middle - multiplier * deviation
+
+    return middle, upper, lower
+
+
+def calculate_supertrend(data, period=10, multiplier=2):
+    atr_value = calculate_atr(data, period)
+    midpoint = (data.High + data.Low) / 2
+
+    upper = midpoint + multiplier * atr_value
+    lower = midpoint - multiplier * atr_value
+
+    final_upper = upper.copy()
+    final_lower = lower.copy()
+
+    direction = pd.Series(
+        1, index=data.index, dtype=int
+    )
+
+    line = pd.Series(
+        np.nan, index=data.index, dtype=float
+    )
+
+    for i in range(1, len(data)):
+        final_upper.iloc[i] = (
+            upper.iloc[i]
+            if (
+                upper.iloc[i] < final_upper.iloc[i - 1]
+                or data.Close.iloc[i - 1] > final_upper.iloc[i - 1]
+            )
+            else final_upper.iloc[i - 1]
+        )
+
+        final_lower.iloc[i] = (
+            lower.iloc[i]
+            if (
+                lower.iloc[i] > final_lower.iloc[i - 1]
+                or data.Close.iloc[i - 1] < final_lower.iloc[i - 1]
+            )
+            else final_lower.iloc[i - 1]
+        )
+
+        if direction.iloc[i - 1] == -1:
+            direction.iloc[i] = (
+                1
+                if data.Close.iloc[i] > final_upper.iloc[i]
+                else -1
+            )
         else:
-            if curr_c > upper.iloc[i]:
-                direction.iloc[i] = 1
-                st.iloc[i] = lower.iloc[i]
-            else:
-                direction.iloc[i] = -1
-                st.iloc[i] = min(upper.iloc[i], prev_st)
-
-    return st, direction
-
-def get_daily_context_bulk(tickers, yf):
-    try:
-        data = yf.download(tickers, period="1mo", interval="1d", progress=False, group_by="ticker", threads=False)
-        context = {}
-        for t in tickers:
-            try:
-                df_d = data[t] if len(tickers) > 1 else data
-                df_d = df_d.dropna()
-                if len(df_d) < 20:
-                    continue
-                prev = df_d.iloc[-2]
-                h, l, c = float(prev["High"]), float(prev["Low"]), float(prev["Close"])
-                p = (h + l + c) / 3.0
-                r1 = (2.0 * p) - l
-                s1 = (2.0 * p) - h
-                context[t] = {"p": p, "r1": r1, "s1": s1}
-            except Exception:
-                continue
-        return context
-    except Exception:
-        return {}
-
-# =====================================================================
-# 5. DUAL SCAN ENGINE (FIRST CANDLE CONFIRMATION - NO MAX TRADES CAP)
-# =====================================================================
-def run_scan(group_name, strike_dict):
-    import numpy as np
-    import pandas as pd
-    import yfinance as yf
-
-    try:
-        yf.set_tz_cache_location("/tmp/yf_tz_cache")
-    except Exception:
-        pass
-
-    is_running, is_valid_entry, is_hard_squareoff, cur_time = get_market_timing_status()
-    if not is_running and not is_hard_squareoff:
-        print(f"[{group_name}] Outside active window 09:30 AM - 03:15 PM IST ({cur_time}).")
-        return
-
-    watchlist = list(strike_dict.keys())
-    print(f"[{group_name}] Scanning {len(watchlist)} tickers on {TIMEFRAME} at {cur_time}...")
-    
-    file_s1 = f"trade_state_s1_{group_name}.json"
-    file_s2 = f"trade_state_s2_{group_name}.json"
-    state_s1 = load_state(file_s1, watchlist)
-    state_s2 = load_state(file_s2, watchlist)
-    
-    context_map = get_daily_context_bulk(watchlist, yf)
-
-    try:
-        intraday_data = yf.download(watchlist, period="7d", interval=TIMEFRAME, progress=False, group_by="ticker", threads=False)
-    except Exception as e:
-        print(f"Download error in {group_name}: {e}")
-        return
-
-    for ticker in watchlist:
-        try:
-            df = intraday_data[ticker] if len(watchlist) > 1 else intraday_data
-            df = df.dropna()
-            if len(df) < 60 or ticker not in context_map:
-                continue
-
-            cpr_info = context_map[ticker]
-            pivot_p = cpr_info["p"]
-            r1 = cpr_info["r1"]
-            s1 = cpr_info["s1"]
-
-            curr_close = float(df["Close"].iloc[-1])
-            curr_high = float(df["High"].iloc[-1])
-            curr_low = float(df["Low"].iloc[-1])
-            curr_open = float(df["Open"].iloc[-1])
-
-            # Resetting Session VWAP
-            vwap_series = calculate_session_vwap(df)
-            curr_vwap = float(vwap_series.iloc[-1])
-
-            atr_series = calculate_atr(df, pd, period=14)
-            current_atr = float(atr_series.iloc[-1])
-
-            # Supertrend 10, 2
-            st_val, st_dir = calculate_supertrend(df, pd, np, period=10, multiplier=2.0)
-            curr_st = float(st_val.iloc[-1])
-            st_flipped_bear = (st_dir.iloc[-1] == -1 and st_dir.iloc[-2] == 1)
-            st_flipped_bull = (st_dir.iloc[-1] == 1 and st_dir.iloc[-2] == -1)
-
-            # 200 EMA
-            ema200_series = df["Close"].ewm(span=200, adjust=False).mean()
-            curr_ema200 = float(ema200_series.iloc[-1])
-
-            # RSI 20
-            rsi20_series = calculate_rsi(df["Close"], np, period=20)
-            curr_rsi20 = float(rsi20_series.iloc[-1])
-
-            # CCI 20
-            cci20_series = calculate_cci(df, period=20)
-            curr_cci20 = float(cci20_series.iloc[-1])
-
-            # Williams %R 14
-            wr14_series = calculate_williams_r(df, period=14)
-            curr_wr14 = float(wr14_series.iloc[-1])
-
-            # Bollinger Bands 20, 2
-            bb_mid, bb_upper, bb_lower = calculate_bollinger_bands(df["Close"], period=20, mult=2.0)
-            curr_bb_upper = float(bb_upper.iloc[-1])
-            curr_bb_lower = float(bb_lower.iloc[-1])
-
-            # Strategy 2 Supertrend (7, 2) & RSI 14
-            st2_val, st2_dir = calculate_supertrend(df, pd, np, period=7, multiplier=2.0)
-            rsi14_series = calculate_rsi(df["Close"], np, period=14)
-            curr_rsi14 = float(rsi14_series.iloc[-1])
-
-            step = strike_dict[ticker]
-            name = ticker.replace(".NS", "").replace("^NSEI", "NIFTY 50").replace("^NSEBANK", "BANK NIFTY").replace("^BSESN", "SENSEX")
-
-            # -------------------------------------------------------------
-            # STRATEGY 1 CONDITIONS (NO NARROW CPR NECKDOWN)
-            # -------------------------------------------------------------
-            # PUT (PE): Close < ST, Close < 200 EMA, RSI < 40, CCI < -100, WR < -80, Close < S1, Close < Lower BB[cite: 8]
-            s1_put_cond = (
-                (curr_close < curr_st) and
-                (curr_close < curr_ema200) and
-                (curr_rsi20 < 40.0) and
-                (curr_cci20 < -100.0) and
-                (curr_wr14 < -80.0) and
-                (curr_close < s1) and
-                (curr_close < curr_bb_lower)
+            direction.iloc[i] = (
+                -1
+                if data.Close.iloc[i] < final_lower.iloc[i]
+                else 1
             )
 
-            # CALL (CE): Close > ST, Close > 200 EMA, RSI > 60, CCI > 100, WR > -20, Close > R1, Close > Upper BB[cite: 8]
-            s1_call_cond = (
-                (curr_close > curr_st) and
-                (curr_close > curr_ema200) and
-                (curr_rsi20 > 60.0) and
-                (curr_cci20 > 100.0) and
-                (curr_wr14 > -20.0) and
-                (curr_close > r1) and
-                (curr_close > curr_bb_upper)
+        line.iloc[i] = (
+            final_lower.iloc[i]
+            if direction.iloc[i] == 1
+            else final_upper.iloc[i]
+        )
+
+    return line, direction
+
+
+def calculate_vwap(data):
+    typical = (
+        data.High + data.Low + data.Close
+    ) / 3
+
+    volume = data.Volume.fillna(0)
+
+    dates = pd.Index(data.index.date)
+
+    cumulative_value = (
+        typical * volume
+    ).groupby(dates).cumsum()
+
+    cumulative_volume = (
+        volume.groupby(dates)
+        .cumsum()
+        .replace(0, np.nan)
+    )
+
+    return cumulative_value / cumulative_volume
+
+
+# ============================================================
+# INDICATIVE OPTION STRIKES
+# ============================================================
+
+def get_strikes(price, step, direction):
+    atm = round(price / step) * step
+
+    if direction == "CALL":
+        itm = atm - step
+    else:
+        itm = atm + step
+
+    def format_strike(value):
+        return (
+            str(int(value))
+            if float(value).is_integer()
+            else f"{value:g}"
+        )
+
+    return format_strike(atm), format_strike(itm)
+
+
+# ============================================================
+# TRADE CLOSING
+# P&L = UNDERLYING SPOT POINTS ONLY
+# ============================================================
+
+def close_trade(
+    state, ticker, position,
+    exit_price, reason, strategy
+):
+    direction = position["trade_type"]
+
+    if direction == "CALL":
+        pnl = exit_price - position["entry_price"]
+    else:
+        pnl = position["entry_price"] - exit_price
+
+    state["closed_trades"].append({
+        "date": current_time().date().isoformat(),
+        "time": current_time().strftime("%H:%M:%S"),
+        "ticker": ticker,
+        "strategy": strategy,
+        "type": direction,
+        "strike_suggestion": position.get("itm_strike"),
+        "entry": round(position["entry_price"], 2),
+        "exit": round(exit_price, 2),
+        "pnl": round(pnl, 2),
+        "pnl_unit": "underlying_spot_points",
+        "reason": reason
+    })
+
+    return pnl
+
+
+# ============================================================
+# S1 AND S2 - ORIGINAL INTRADAY STRATEGIES
+# ============================================================
+
+def scan_intraday_symbol(
+    ticker, step, state1, state2,
+    data, pivot, entry_allowed, squareoff
+):
+    if len(data) < 220 or pivot is None:
+        return
+
+    df = data.copy()
+
+    df["VWAP"] = calculate_vwap(df)
+    df["ATR"] = calculate_atr(df)
+    df["ST"], df["DIR"] = calculate_supertrend(df, 10, 2)
+    df["ST2"], df["DIR2"] = calculate_supertrend(df, 7, 2)
+    df["EMA200"] = df.Close.ewm(
+        span=200, adjust=False
+    ).mean()
+
+    df["RSI20"] = calculate_rsi(df.Close, 20)
+    df["RSI14"] = calculate_rsi(df.Close, 14)
+    df["CCI"] = calculate_cci(df)
+    df["WR"] = calculate_williams_r(df)
+
+    _, df["BBU"], df["BBL"] = calculate_bollinger(df.Close)
+
+    df = df.dropna()
+
+    if len(df) < 3:
+        return
+
+    current = df.iloc[-1]
+    previous = df.iloc[-2]
+
+    bar_id = df.index[-1].isoformat()
+
+    if (
+        state1["last_processed"].get(ticker) == bar_id
+        and state2["last_processed"].get(ticker) == bar_id
+    ):
+        return
+
+    state1["last_processed"][ticker] = bar_id
+    state2["last_processed"][ticker] = bar_id
+
+    close = float(current.Close)
+    high = float(current.High)
+    low = float(current.Low)
+    open_price = float(current.Open)
+
+    st = float(current.ST)
+    st_direction = int(current.DIR)
+
+    bear_flip = (
+        st_direction == -1
+        and int(previous.DIR) == 1
+    )
+
+    bull_flip = (
+        st_direction == 1
+        and int(previous.DIR) == -1
+    )
+
+    pivot_p = pivot["p"]
+    pivot_r1 = pivot["r1"]
+    pivot_s1 = pivot["s1"]
+
+    name = ticker.replace(".NS", "")
+    name = name.replace("^NSEI", "NIFTY 50")
+    name = name.replace("^NSEBANK", "BANK NIFTY")
+    name = name.replace("^BSESN", "SENSEX")
+
+    # --------------------------------------------------------
+    # S1 ENTRY CONDITIONS
+    # --------------------------------------------------------
+
+    s1_call = (
+        close > st
+        and close > current.EMA200
+        and current.RSI20 > 60
+        and current.CCI > 100
+        and current.WR > -20
+        and close > pivot_r1
+        and close > current.BBU
+    )
+
+    s1_put = (
+        close < st
+        and close < current.EMA200
+        and current.RSI20 < 40
+        and current.CCI < -100
+        and current.WR < -80
+        and close < pivot_s1
+        and close < current.BBL
+    )
+
+    # --------------------------------------------------------
+    # S2 ENTRY CONDITIONS
+    # --------------------------------------------------------
+
+    s2_call = (
+        close > open_price
+        and st_direction == 1
+        and close > st
+        and close > pivot_p
+        and current.RSI14 > 55
+        and close > current.VWAP
+    )
+
+    s2_put = (
+        close < open_price
+        and int(current.DIR2) == -1
+        and close < current.ST2
+        and close < pivot_p
+        and current.RSI14 < 45
+        and close < current.VWAP
+    )
+
+    # ========================================================
+    # S1 POSITION MANAGEMENT
+    # ========================================================
+
+    pos1 = state1["positions"].setdefault(
+        ticker, default_position()
+    )
+
+    if pos1["in_trade"]:
+        typ = pos1["trade_type"]
+
+        if squareoff:
+            pnl = close_trade(
+                state1, name, pos1,
+                close, "15:15 EOD", "S1"
             )
 
-            # -------------------------------------------------------------
-            # STRATEGY 2 CONDITIONS (PRESERVED)
-            # -------------------------------------------------------------
-            s2_call_cond = (curr_close > curr_open) and (st_dir.iloc[-1] == 1) and (curr_close > curr_st) and (curr_close > pivot_p) and (curr_rsi14 > 55.0) and (curr_close > curr_vwap)
-            s2_put_cond = (curr_close < curr_open) and (st2_dir.iloc[-1] == -1) and (curr_close < float(st2_val.iloc[-1])) and (curr_close < pivot_p) and (curr_rsi14 < 45.0) and (curr_close < curr_vwap)
+            send_telegram(
+                f"S1 EOD EXIT {name} {typ}: "
+                f"{pnl:+.2f} underlying spot points"
+            )
 
-            # =============================================================
-            # [STRATEGY 1: DIRECT FIRST CANDLE ENTRY & 1R/2R ALERTS]
-            # =============================================================
-            pos1 = state_s1["positions"].get(ticker, get_default_item_state())
-            if pos1["in_trade"]:
-                trade_type = pos1["trade_type"]
-                entry_px = pos1["entry_price"]
-                sl_px = pos1["trailing_sl"]
-                t1_px = pos1["target_1"]
-                t2_px = pos1["target_2"]
-                t1_hit = pos1.get("t1_hit", False)
+            pos1 = default_position()
 
-                # Hard EOD Cutoff (3:15 PM)[cite: 10]
-                if is_hard_squareoff:
-                    pnl = (curr_close - entry_px) if trade_type == "CALL" else (entry_px - curr_close)
-                    state_s1["closed_trades"].append({
-                        "ticker": name, "type": trade_type, "strike": pos1["itm_strike"],
-                        "entry": entry_px, "exit": curr_close, "pnl": round(pnl, 2), "reason": "3:15 PM EOD"
-                    })
-                    send_telegram(f"⏰ *[S1: WORKSPACE] 3:15 PM EOD EXIT*: `{name}` | PnL: {pnl:+.2f} pts | Close `{pos1['itm_strike']} {'CE' if trade_type == 'CALL' else 'PE'}`")
-                    pos1 = get_default_item_state()
+        elif typ == "CALL":
+            if (
+                not pos1["t1_hit"]
+                and high >= pos1["target_1"]
+            ):
+                pos1["t1_hit"] = True
+                pos1["trailing_sl"] = pos1["entry_price"]
 
-                elif trade_type == "CALL":
-                    # Check Target 1 (1R)[cite: 7]
-                    if not t1_hit and curr_high >= t1_px:
-                        pos1["t1_hit"] = True
-                        pos1["trailing_sl"] = entry_px  # Move SL to Breakeven[cite: 7]
-                        send_telegram(
-                            f"🎯 *[S1: WORKSPACE] CALL TARGET 1 (1R) HIT!*\n\n"
-                            f"• `{name}` | High: ₹{curr_high:,.2f} (Entry: ₹{entry_px:,.2f})\n"
-                            f"• T1 Hit at ₹{t1_px:,.2f} (+{round(t1_px - entry_px, 2)} pts)\n"
-                            f"✅ *Action:* Book 50% profit on `{pos1['itm_strike']} CE`\n"
-                            f"🛡️ *Trailing SL:* Moved to Breakeven (₹{entry_px:,.2f}) for Target 2 (₹{t2_px:,.2f})!"[cite: 7]
-                        )
+                send_telegram(
+                    f"S1 CALL {name}: 1R reached. "
+                    "Illustrative partial-booking alert."
+                )
 
-                    # Check Target 2 (2R)[cite: 7]
-                    if curr_high >= t2_px:
-                        pnl = t2_px - entry_px
-                        state_s1["closed_trades"].append({
-                            "ticker": name, "type": "CALL", "strike": pos1["itm_strike"],
-                            "entry": entry_px, "exit": t2_px, "pnl": round(pnl, 2), "reason": "Target 2 (2R)"
-                        })
-                        send_telegram(
-                            f"🏆 *[S1: WORKSPACE] CALL TARGET 2 (2R) HIT - FULL EXIT!*\n\n"
-                            f"• `{name}` hit 2R Target at ₹{t2_px:,.2f}\n"
-                            f"• Total Profit: *{pnl:+.2f} pts*\n"
-                            f"🎉 *Action:* Square off remaining 50% of `{pos1['itm_strike']} CE`!"
-                        )
-                        pos1 = get_default_item_state()
+            if high >= pos1["target_2"]:
+                pnl = close_trade(
+                    state1, name, pos1,
+                    pos1["target_2"], "2R target", "S1"
+                )
 
-                    # Invalidation / Reversal Checks[cite: 7]
-                    elif curr_close <= pos1["trailing_sl"] or st_flipped_bear or (curr_close < curr_st):
-                        reason = "Breakeven Hit" if (pos1.get("t1_hit") and curr_close <= entry_px) else ("Supertrend Reversal" if (st_flipped_bear or curr_close < curr_st) else "Stop Loss Hit")[cite: 7]
-                        pnl = curr_close - entry_px
-                        state_s1["closed_trades"].append({
-                            "ticker": name, "type": "CALL", "strike": pos1["itm_strike"],
-                            "entry": entry_px, "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
-                        })
-                        send_telegram(f"🔴 *[S1: WORKSPACE] CALL EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos1['itm_strike']} CE`")
-                        pos1 = get_default_item_state()
+                send_telegram(
+                    f"S1 CALL {name}: 2R exit | "
+                    f"{pnl:+.2f} underlying spot points"
+                )
 
-                elif trade_type == "PUT":
-                    # Check Target 1 (1R)[cite: 7]
-                    if not t1_hit and curr_low <= t1_px:
-                        pos1["t1_hit"] = True
-                        pos1["trailing_sl"] = entry_px  # Move SL to Breakeven[cite: 7]
-                        send_telegram(
-                            f"🎯 *[S1: WORKSPACE] PUT TARGET 1 (1R) HIT!*\n\n"
-                            f"• `{name}` | Low: ₹{curr_low:,.2f} (Entry: ₹{entry_px:,.2f})\n"
-                            f"• T1 Hit at ₹{t1_px:,.2f} (+{round(entry_px - t1_px, 2)} pts)\n"
-                            f"✅ *Action:* Book 50% profit on `{pos1['itm_strike']} PE`\n"
-                            f"🛡️ *Trailing SL:* Moved to Breakeven (₹{entry_px:,.2f}) for Target 2 (₹{t2_px:,.2f})!"[cite: 7]
-                        )
+                pos1 = default_position()
 
-                    # Check Target 2 (2R)[cite: 7]
-                    if curr_low <= t2_px:
-                        pnl = entry_px - t2_px
-                        state_s1["closed_trades"].append({
-                            "ticker": name, "type": "PUT", "strike": pos1["itm_strike"],
-                            "entry": entry_px, "exit": t2_px, "pnl": round(pnl, 2), "reason": "Target 2 (2R)"
-                        })
-                        send_telegram(
-                            f"🏆 *[S1: WORKSPACE] PUT TARGET 2 (2R) HIT - FULL EXIT!*\n\n"
-                            f"• `{name}` hit 2R Target at ₹{t2_px:,.2f}\n"
-                            f"• Total Profit: *{pnl:+.2f} pts*\n"
-                            f"🎉 *Action:* Square off remaining 50% of `{pos1['itm_strike']} PE`!"
-                        )
-                        pos1 = get_default_item_state()
+            elif (
+                close <= pos1["trailing_sl"]
+                or bear_flip
+                or close < st
+            ):
+                pnl = close_trade(
+                    state1, name, pos1,
+                    close, "Stop / Supertrend reversal", "S1"
+                )
 
-                    # Invalidation / Reversal Checks[cite: 7]
-                    elif curr_close >= pos1["trailing_sl"] or st_flipped_bull or (curr_close > curr_st):
-                        reason = "Breakeven Hit" if (pos1.get("t1_hit") and curr_close >= entry_px) else ("Supertrend Reversal" if (st_flipped_bull or curr_close > curr_st) else "Stop Loss Hit")[cite: 7]
-                        pnl = entry_px - curr_close
-                        state_s1["closed_trades"].append({
-                            "ticker": name, "type": "PUT", "strike": pos1["itm_strike"],
-                            "entry": entry_px, "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
-                        })
-                        send_telegram(f"🟢 *[S1: WORKSPACE] PUT EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos1['itm_strike']} PE`")
-                        pos1 = get_default_item_state()
-            else:
-                # FIRST CANDLE IMMEDIATE CONFIRMATION ENTRY
-                if is_valid_entry:
-                    if s1_call_cond:
-                        atm, itm = get_options_strikes(curr_close, step, "CALL")
-                        sl = round(min(curr_st, float(df["Low"].iloc[-3:].min())) * 0.999, 2)
-                        risk = round(curr_close - sl, 2)
-                        t1 = round(curr_close + risk, 2)
-                        t2 = round(curr_close + (2.0 * risk), 2)
+                send_telegram(
+                    f"S1 CALL EXIT {name}: "
+                    f"{pnl:+.2f} underlying spot points"
+                )
 
-                        pos1.update({
-                            "in_trade": True, "trade_type": "CALL",
-                            "entry_price": curr_close, "extreme_price": curr_high,
-                            "trailing_sl": sl, "initial_risk": risk,
-                            "target_1": t1, "target_2": t2, "t1_hit": False,
-                            "atm_strike": atm, "itm_strike": itm
-                        })
-                        send_telegram(
-                            f"🟢 *[S1: WORKSPACE] CALL CONFIRMED ENTRY (CE)*\n\n"
-                            f"⚡ *Immediate Confirmation on 1st Candle!*\n"
-                            f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
-                            f"• ST (10,2): ₹{curr_st:,.2f} | 200 EMA: ₹{curr_ema200:,.2f}\n"
-                            f"• RSI: {curr_rsi20:.1f} | CCI: {curr_cci20:.1f} | %R: {curr_wr14:.1f}\n"
-                            f"• CPR R1: ₹{r1:,.2f} | Upper BB: ₹{curr_bb_upper:,.2f}\n"
-                            f"🛑 *Stop Loss:* ₹{sl:,.2f} (Risk: {risk} pts)\n"
-                            f"🎯 *Target 1 (1R):* ₹{t1:,.2f} (Book 50%)\n"
-                            f"🏆 *Target 2 (2R):* ₹{t2:,.2f} (Full Exit)\n"
-                            f"• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)"
-                        )
-                    elif s1_put_cond:
-                        atm, itm = get_options_strikes(curr_close, step, "PUT")
-                        sl = round(max(curr_st, float(df["High"].iloc[-3:].max())) * 1.001, 2)
-                        risk = round(sl - curr_close, 2)
-                        t1 = round(curr_close - risk, 2)
-                        t2 = round(curr_close - (2.0 * risk), 2)
+                pos1 = default_position()
 
-                        pos1.update({
-                            "in_trade": True, "trade_type": "PUT",
-                            "entry_price": curr_close, "extreme_price": curr_low,
-                            "trailing_sl": sl, "initial_risk": risk,
-                            "target_1": t1, "target_2": t2, "t1_hit": False,
-                            "atm_strike": atm, "itm_strike": itm
-                        })
-                        send_telegram(
-                            f"🔴 *[S1: WORKSPACE] PUT CONFIRMED ENTRY (PE)*\n\n"
-                            f"⚡ *Immediate Confirmation on 1st Candle!*\n"
-                            f"• `{name}` | Spot: ₹{curr_close:,.2f}\n"
-                            f"• ST (10,2): ₹{curr_st:,.2f} | 200 EMA: ₹{curr_ema200:,.2f}\n"
-                            f"• RSI: {curr_rsi20:.1f} | CCI: {curr_cci20:.1f} | %R: {curr_wr14:.1f}\n"
-                            f"• CPR S1: ₹{s1:,.2f} | Lower BB: ₹{curr_bb_lower:,.2f}\n"
-                            f"🛑 *Stop Loss:* ₹{sl:,.2f} (Risk: {risk} pts)\n"
-                            f"🎯 *Target 1 (1R):* ₹{t1:,.2f} (Book 50%)\n"
-                            f"🏆 *Target 2 (2R):* ₹{t2:,.2f} (Full Exit)\n"
-                            f"• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)"
-                        )
-            state_s1["positions"][ticker] = pos1
+        else:
+            if (
+                not pos1["t1_hit"]
+                and low <= pos1["target_1"]
+            ):
+                pos1["t1_hit"] = True
+                pos1["trailing_sl"] = pos1["entry_price"]
 
-            # =============================================================
-            # [STRATEGY 2 PIPELINE: ENHANCED VWAP]
-            # =============================================================
-            pos2 = state_s2["positions"].get(ticker, get_default_item_state())
-            if pos2["in_trade"]:
-                pos2["candles_held"] += 1
-                trade_type = pos2["trade_type"]
-                buf = round(current_atr * ATR_MULTIPLIER, 2)
-                time_stop_hit = pos2["candles_held"] >= S2_MAX_HOLD_CANDLES
+                send_telegram(
+                    f"S1 PUT {name}: 1R reached. "
+                    "Illustrative partial-booking alert."
+                )
 
-                if is_hard_squareoff:
-                    pnl = (curr_close - pos2["entry_price"]) if trade_type == "CALL" else (pos2["entry_price"] - curr_close)
-                    state_s2["closed_trades"].append({
-                        "ticker": name, "type": trade_type, "strike": pos2["itm_strike"],
-                        "entry": pos2["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": "3:15 PM EOD"
-                    })
-                    send_telegram(f"⏰ *[S2: ENHANCED] 3:15 PM EXIT*: `{name}` | PnL: {pnl:+.2f} pts | Close `{pos2['itm_strike']} {'CE' if trade_type == 'CALL' else 'PE'}`")
-                    pos2 = get_default_item_state()
-                elif trade_type == "CALL":
-                    if curr_high > pos2["extreme_price"]:
-                        pos2["extreme_price"] = curr_high
-                        new_tsl = round(curr_high - buf, 2)
-                        if new_tsl > pos2["trailing_sl"]:
-                            pos2["trailing_sl"] = new_tsl
-                    tsl_hit = curr_close <= pos2["trailing_sl"]
-                    vwap_exit = curr_close < curr_vwap
-                    pivot_broken = curr_close < pivot_p
+            if low <= pos1["target_2"]:
+                pnl = close_trade(
+                    state1, name, pos1,
+                    pos1["target_2"], "2R target", "S1"
+                )
 
-                    if tsl_hit or st_flipped_bear or pivot_broken or vwap_exit or time_stop_hit:
-                        reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakdown" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST Flip")))[cite: 10]
-                        pnl = curr_close - pos2["entry_price"]
-                        state_s2["closed_trades"].append({
-                            "ticker": name, "type": "CALL", "strike": pos2["itm_strike"],
-                            "entry": pos2["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
-                        })
-                        send_telegram(f"🔴 *[S2: ENHANCED] CALL EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos2['itm_strike']} CE`")
-                        pos2 = get_default_item_state()
+                send_telegram(
+                    f"S1 PUT {name}: 2R exit | "
+                    f"{pnl:+.2f} underlying spot points"
+                )
 
-                elif trade_type == "PUT":
-                    if curr_low < pos2["extreme_price"]:
-                        pos2["extreme_price"] = curr_low
-                        new_tsl = round(curr_low + buf, 2)
-                        if new_tsl < pos2["trailing_sl"] or pos2["trailing_sl"] == 0:
-                            pos2["trailing_sl"] = new_tsl
-                    tsl_hit = curr_close >= pos2["trailing_sl"]
-                    vwap_exit = curr_close > curr_vwap
-                    pivot_broken = curr_close > pivot_p
+                pos1 = default_position()
 
-                    if tsl_hit or st_flipped_bull or pivot_broken or vwap_exit or time_stop_hit:
-                        reason = "Trailing SL" if tsl_hit else ("Pivot P Broken" if pivot_broken else ("VWAP Breakout" if vwap_exit else ("30m Time Stop" if time_stop_hit else "ST Flip")))[cite: 10]
-                        pnl = pos2["entry_price"] - curr_close
-                        state_s2["closed_trades"].append({
-                            "ticker": name, "type": "PUT", "strike": pos2["itm_strike"],
-                            "entry": pos2["entry_price"], "exit": curr_close, "pnl": round(pnl, 2), "reason": reason
-                        })
-                        send_telegram(f"🟢 *[S2: ENHANCED] PUT EXIT*: `{name}`\n• Spot: ₹{curr_close:,.2f} ({pnl:+.2f} pts)\n• Reason: {reason}\n• Square off `{pos2['itm_strike']} PE`")
-                        pos2 = get_default_item_state()
-            else:
-                if is_valid_entry:
-                    if s2_call_cond:
-                        atm, itm = get_options_strikes(curr_close, step, "CALL")
-                        pos2.update({"in_trade": True, "trade_type": "CALL", "entry_price": curr_close, "extreme_price": curr_high, "trailing_sl": round(curr_close - (current_atr * ATR_MULTIPLIER), 2), "atm_strike": atm, "itm_strike": itm, "candles_held": 0})
-                        send_telegram(f"🟢 *[S2: ENHANCED] CALL ENTRY (CE)*\n\n✅ *Above Pivot P + VWAP Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Pivot P: ₹{pivot_p:,.2f} | VWAP: ₹{curr_vwap:,.2f}\n• Rec ITM: `{itm} CE` (ATM: `{atm} CE`)\n⏳ *Time-Stop:* 30 Mins")
-                    elif s2_put_cond:
-                        atm, itm = get_options_strikes(curr_close, step, "PUT")
-                        pos2.update({"in_trade": True, "trade_type": "PUT", "entry_price": curr_close, "extreme_price": curr_low, "trailing_sl": round(curr_close + (current_atr * ATR_MULTIPLIER), 2), "atm_strike": atm, "itm_strike": itm, "candles_held": 0})
-                        send_telegram(f"🔴 *[S2: ENHANCED] PUT ENTRY (PE)*\n\n✅ *Below Pivot P + ST2 (7,2) + VWAP Confirmed!*\n• `{name}` | Spot: ₹{curr_close:,.2f}\n• Pivot P: ₹{pivot_p:,.2f} | VWAP: ₹{curr_vwap:,.2f}\n• Rec ITM: `{itm} PE` (ATM: `{atm} PE`)\n⏳ *Time-Stop:* 30 Mins")
-            state_s2["positions"][ticker] = pos2
+            elif (
+                close >= pos1["trailing_sl"]
+                or bull_flip
+                or close > st
+            ):
+                pnl = close_trade(
+                    state1, name, pos1,
+                    close, "Stop / Supertrend reversal", "S1"
+                )
 
-        except Exception:
-            continue
+                send_telegram(
+                    f"S1 PUT EXIT {name}: "
+                    f"{pnl:+.2f} underlying spot points"
+                )
 
-    save_state(file_s1, state_s1)
-    save_state(file_s2, state_s2)
+                pos1 = default_position()
 
-# =====================================================================
-# 6. POST-5 PM DAILY PERFORMANCE REPORT AGGREGATOR
-# =====================================================================
-def generate_daily_report():
-    ist = pytz.timezone("Asia/Kolkata")
-    today_str = datetime.datetime.now(ist).strftime("%d-%b-%Y")
-    
-    s1_all_trades = []
-    s2_all_trades = []
+    elif entry_allowed and (s1_call or s1_put):
+        typ = "CALL" if s1_call else "PUT"
+        atm, itm = get_strikes(close, step, typ)
 
-    for group in SECTOR_MAPS.keys():
-        f1 = f"trade_state_s1_{group}.json"
-        f2 = f"trade_state_s2_{group}.json"
+        if typ == "CALL":
+            stop = min(
+                st, float(df.Low.iloc[-3:].min())
+            ) * 0.999
 
-        if os.path.exists(f1):
-            try:
-                with open(f1, "r") as f:
-                    s1_data = json.load(f)
-                    s1_all_trades.extend(s1_data.get("closed_trades", []))
-            except Exception:
-                pass
+            risk = close - stop
+            target1 = close + risk
+            target2 = close + 2 * risk
 
-        if os.path.exists(f2):
-            try:
-                with open(f2, "r") as f:
-                    s2_data = json.load(f)
-                    s2_all_trades.extend(s2_data.get("closed_trades", []))
-            except Exception:
-                pass
+        else:
+            stop = max(
+                st, float(df.High.iloc[-3:].max())
+            ) * 1.001
 
-    def summarize_strategy(trades):
-        if not trades:
-            return {"count": 0, "wins": 0, "losses": 0, "pnl": 0.0, "win_rate": 0.0, "top_winner": None, "top_loser": None}
-        count = len(trades)
-        wins = sum(1 for t in trades if t["pnl"] > 0)
-        losses = sum(1 for t in trades if t["pnl"] < 0)
-        total_pnl = sum(t["pnl"] for t in trades)
-        win_rate = (wins / count * 100) if count > 0 else 0
-        sorted_trades = sorted(trades, key=lambda x: x["pnl"], reverse=True)
-        return {
-            "count": count,
-            "wins": wins,
-            "losses": losses,
-            "pnl": total_pnl,
-            "win_rate": win_rate,
-            "top_winner": sorted_trades[0] if count > 0 else None,
-            "top_loser": sorted_trades[-1] if count > 0 else None
+            risk = stop - close
+            target1 = close - risk
+            target2 = close - 2 * risk
+
+        if risk > 0 and math.isfinite(risk):
+            pos1.update({
+                "in_trade": True,
+                "trade_type": typ,
+                "entry_price": close,
+                "extreme_price": high if typ == "CALL" else low,
+                "trailing_sl": stop,
+                "initial_risk": risk,
+                "target_1": target1,
+                "target_2": target2,
+                "t1_hit": False,
+                "atm_strike": atm,
+                "itm_strike": itm,
+                "entry_time": current_time().isoformat()
+            })
+
+            send_telegram(
+                f"S1 {typ} SIGNAL: {name}\n"
+                f"Underlying: {close:.2f}\n"
+                f"Indicative ATM: {atm} | ITM: {itm}\n"
+                f"Underlying SL: {stop:.2f}\n"
+                f"Underlying T1: {target1:.2f} | T2: {target2:.2f}\n"
+                "Yahoo underlying signal only."
+            )
+
+    state1["positions"][ticker] = pos1
+
+    # ========================================================
+    # S2 POSITION MANAGEMENT
+    # ========================================================
+
+    pos2 = state2["positions"].setdefault(
+        ticker, default_position()
+    )
+
+    if pos2["in_trade"]:
+        pos2["candles_held"] += 1
+        typ = pos2["trade_type"]
+        buffer = float(current.ATR) * ATR_MULTIPLIER
+
+        if typ == "CALL":
+            pos2["extreme_price"] = max(
+                pos2["extreme_price"], high
+            )
+
+            pos2["trailing_sl"] = max(
+                pos2["trailing_sl"],
+                pos2["extreme_price"] - buffer
+            )
+
+            reason = (
+                "Trailing SL"
+                if close <= pos2["trailing_sl"]
+                else "Supertrend reversal"
+                if bear_flip
+                else "Pivot/VWAP breakdown"
+                if close < pivot_p or close < current.VWAP
+                else "30-minute time stop"
+                if pos2["candles_held"] >= S2_MAX_HOLD_CANDLES
+                else ""
+            )
+
+        else:
+            pos2["extreme_price"] = min(
+                pos2["extreme_price"], low
+            )
+
+            new_stop = pos2["extreme_price"] + buffer
+
+            pos2["trailing_sl"] = (
+                min(pos2["trailing_sl"], new_stop)
+                if pos2["trailing_sl"]
+                else new_stop
+            )
+
+            reason = (
+                "Trailing SL"
+                if close >= pos2["trailing_sl"]
+                else "Supertrend reversal"
+                if bull_flip
+                else "Pivot/VWAP breakout"
+                if close > pivot_p or close > current.VWAP
+                else "30-minute time stop"
+                if pos2["candles_held"] >= S2_MAX_HOLD_CANDLES
+                else ""
+            )
+
+        if squareoff:
+            reason = "15:15 EOD"
+
+        if reason:
+            pnl = close_trade(
+                state2, name, pos2,
+                close, reason, "S2"
+            )
+
+            send_telegram(
+                f"S2 {typ} EXIT {name}: {reason}\n"
+                f"{pnl:+.2f} underlying spot points"
+            )
+
+            pos2 = default_position()
+
+    elif entry_allowed and (s2_call or s2_put):
+        typ = "CALL" if s2_call else "PUT"
+        atm, itm = get_strikes(close, step, typ)
+
+        risk = float(current.ATR) * ATR_MULTIPLIER
+
+        if risk > 0 and math.isfinite(risk):
+            stop = (
+                close - risk
+                if typ == "CALL"
+                else close + risk
+            )
+
+            pos2.update({
+                "in_trade": True,
+                "trade_type": typ,
+                "entry_price": close,
+                "extreme_price": high if typ == "CALL" else low,
+                "trailing_sl": stop,
+                "initial_risk": risk,
+                "atm_strike": atm,
+                "itm_strike": itm,
+                "candles_held": 0,
+                "entry_time": current_time().isoformat()
+            })
+
+            send_telegram(
+                f"S2 {typ} SIGNAL: {name}\n"
+                f"Underlying: {close:.2f}\n"
+                f"Indicative ATM: {atm} | ITM: {itm}\n"
+                f"Underlying initial stop: {stop:.2f}\n"
+                "Yahoo underlying signal only."
+            )
+
+    state2["positions"][ticker] = pos2
+
+
+# ============================================================
+# S3 - LIQUIDITY SWEEP AND RECLAIM
+# ============================================================
+
+def scan_s3_symbol(
+    ticker, step, state3, data, pivot,
+    entry_allowed, squareoff
+):
+    if len(data) < 30 or pivot is None:
+        return
+
+    df = data.copy()
+
+    df["VWAP"] = calculate_vwap(df)
+    df["ATR"] = calculate_atr(df, 14)
+    df["RSI"] = calculate_rsi(df.Close, 14)
+    df["VOL_MA"] = df.Volume.rolling(20).mean()
+
+    df = df.dropna()
+
+    if len(df) < 22:
+        return
+
+    current = df.iloc[-1]
+    bar_id = df.index[-1].isoformat()
+
+    if state3["last_processed"].get(ticker) == bar_id:
+        return
+
+    state3["last_processed"][ticker] = bar_id
+
+    close = float(current.Close)
+    open_price = float(current.Open)
+    high = float(current.High)
+    low = float(current.Low)
+
+    atr = float(current.ATR)
+    vwap = float(current.VWAP)
+    rsi = float(current.RSI)
+    volume = float(current.Volume)
+    volume_average = float(current.VOL_MA)
+
+    pdh = float(pivot["pdh"])
+    pdl = float(pivot["pdl"])
+
+    name = ticker.replace(".NS", "")
+    name = name.replace("^NSEI", "NIFTY 50")
+    name = name.replace("^NSEBANK", "BANK NIFTY")
+    name = name.replace("^BSESN", "SENSEX")
+
+    # Sweep below previous-day low and reclaim.
+    bullish_reclaim = (
+        low < pdl
+        and close > pdl
+        and close > open_price
+        and close > vwap
+        and rsi > 50
+        and volume > 1.2 * volume_average
+    )
+
+    # Sweep above previous-day high and reject.
+    bearish_reclaim = (
+        high > pdh
+        and close < pdh
+        and close < open_price
+        and close < vwap
+        and rsi < 50
+        and volume > 1.2 * volume_average
+    )
+
+    pos = state3["positions"].setdefault(
+        ticker, default_position()
+    )
+
+    # --------------------------------------------------------
+    # MANAGE EXISTING S3 TRADE
+    # --------------------------------------------------------
+
+    if pos["in_trade"]:
+        typ = pos["trade_type"]
+
+        if typ == "CALL":
+            stop_hit = low <= pos["trailing_sl"]
+            target_hit = high >= pos["target_2"]
+        else:
+            stop_hit = high >= pos["trailing_sl"]
+            target_hit = low <= pos["target_2"]
+
+        # Conservative assumption: if both stop and target
+        # are touched in one candle, assume stop was hit first.
+        if squareoff:
+            exit_price = close
+            reason = "15:15 EOD"
+
+        elif stop_hit:
+            exit_price = pos["trailing_sl"]
+            reason = "S3 stop-loss"
+
+        elif target_hit:
+            exit_price = pos["target_2"]
+            reason = "S3 2R target"
+
+        else:
+            exit_price = None
+            reason = ""
+
+        if exit_price is not None:
+            pnl = close_trade(
+                state3, name, pos,
+                exit_price, reason, "S3"
+            )
+
+            send_telegram(
+                f"S3 {typ} EXIT: {name}\n"
+                f"Reason: {reason}\n"
+                f"Exit: {exit_price:.2f}\n"
+                f"Underlying points: {pnl:+.2f}"
+            )
+
+            pos = default_position()
+
+    # --------------------------------------------------------
+    # NEW S3 CALL
+    # --------------------------------------------------------
+
+    elif entry_allowed and bullish_reclaim:
+        stop = low - (0.15 * atr)
+        risk = close - stop
+
+        if risk > 0 and math.isfinite(risk):
+            target = close + (2 * risk)
+            atm, itm = get_strikes(close, step, "CALL")
+
+            pos.update({
+                "in_trade": True,
+                "trade_type": "CALL",
+                "entry_price": close,
+                "extreme_price": low,
+                "trailing_sl": stop,
+                "initial_risk": risk,
+                "target_1": close + risk,
+                "target_2": target,
+                "atm_strike": atm,
+                "itm_strike": itm,
+                "entry_time": current_time().isoformat()
+            })
+
+            send_telegram(
+                f"S3 CALL LIQUIDITY RECLAIM\n"
+                f"Symbol: {name}\n"
+                f"Entry: {close:.2f}\n"
+                f"Previous Day Low: {pdl:.2f}\n"
+                f"Indicative ATM: {atm} | ITM: {itm}\n"
+                f"Underlying SL: {stop:.2f}\n"
+                f"Underlying 2R target: {target:.2f}\n"
+                "Yahoo underlying signal only."
+            )
+
+    # --------------------------------------------------------
+    # NEW S3 PUT
+    # --------------------------------------------------------
+
+    elif entry_allowed and bearish_reclaim:
+        stop = high + (0.15 * atr)
+        risk = stop - close
+
+        if risk > 0 and math.isfinite(risk):
+            target = close - (2 * risk)
+            atm, itm = get_strikes(close, step, "PUT")
+
+            pos.update({
+                "in_trade": True,
+                "trade_type": "PUT",
+                "entry_price": close,
+                "extreme_price": high,
+                "trailing_sl": stop,
+                "initial_risk": risk,
+                "target_1": close - risk,
+                "target_2": target,
+                "atm_strike": atm,
+                "itm_strike": itm,
+                "entry_time": current_time().isoformat()
+            })
+
+            send_telegram(
+                f"S3 PUT LIQUIDITY RECLAIM\n"
+                f"Symbol: {name}\n"
+                f"Entry: {close:.2f}\n"
+                f"Previous Day High: {pdh:.2f}\n"
+                f"Indicative ATM: {atm} | ITM: {itm}\n"
+                f"Underlying SL: {stop:.2f}\n"
+                f"Underlying 2R target: {target:.2f}\n"
+                "Yahoo underlying signal only."
+            )
+
+    state3["positions"][ticker] = pos
+
+
+# ============================================================
+# SWING SCANNER
+# WEEKLY + DAILY + 4-HOUR TREND ALIGNMENT
+# ============================================================
+
+def swing_signal(ticker, step):
+    today = current_time().date().isoformat()
+
+    cached = SWING_CACHE.get(ticker)
+
+    if cached and cached["date"] == today:
+        return cached["signal"]
+
+    daily = download_data(ticker, "2y", "1d")
+    hourly = download_data(ticker, "730d", "1h")
+
+    if len(daily) < 60 or len(hourly) < 80:
+        SWING_CACHE[ticker] = {
+            "date": today,
+            "signal": None
         }
+        return None
 
-    s1_sum = summarize_strategy(s1_all_trades)
-    s2_sum = summarize_strategy(s2_all_trades)
+    daily = daily.copy()
 
-    report = (
-        f"📊 *DAILY INTRADAY REPORT | {today_str}*\n"
-        f"════════════════════════════\n\n"
-        f"📘 *[STRATEGY 1: BUILDER WORKSPACE]*\n"
-        f"• Total Trades: `{s1_sum['count']}` (✅ {s1_sum['wins']} | ❌ {s1_sum['losses']})\n"
-        f"• Win Rate: `{s1_sum['win_rate']:.1f}%`\n"
-        f"• Net PnL (Spot): *{s1_sum['pnl']:+.2f} pts*\n"
+    daily["EMA20"] = daily.Close.ewm(
+        span=20, adjust=False
+    ).mean()
+
+    daily["EMA50"] = daily.Close.ewm(
+        span=50, adjust=False
+    ).mean()
+
+    weekly = daily.resample("W-FRI").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum"
+    }).dropna()
+
+    if len(weekly) < 20:
+        SWING_CACHE[ticker] = {
+            "date": today,
+            "signal": None
+        }
+        return None
+
+    weekly["EMA20"] = weekly.Close.ewm(
+        span=20, adjust=False
+    ).mean()
+
+    four_hour = hourly.resample("4h").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum"
+    }).dropna()
+
+    if len(four_hour) < 30:
+        SWING_CACHE[ticker] = {
+            "date": today,
+            "signal": None
+        }
+        return None
+
+    four_hour["EMA20"] = four_hour.Close.ewm(
+        span=20, adjust=False
+    ).mean()
+
+    four_hour["EMA50"] = four_hour.Close.ewm(
+        span=50, adjust=False
+    ).mean()
+
+    d = daily.iloc[-1]
+    w = weekly.iloc[-1]
+    h = four_hour.iloc[-1]
+
+    price = float(d.Close)
+
+    bullish = (
+        d.Close > d.EMA20 > d.EMA50
+        and w.Close > w.EMA20
+        and h.Close > h.EMA20 > h.EMA50
     )
-    if s1_sum["top_winner"]:
-        report += f"• Best: `{s1_sum['top_winner']['ticker']}` ({s1_sum['top_winner']['pnl']:+.2f} pts)\n"
-    if s1_sum["top_loser"]:
-        report += f"• Worst: `{s1_sum['top_loser']['ticker']}` ({s1_sum['top_loser']['pnl']:+.2f} pts)\n"
 
-    report += (
-        f"\n📙 *[STRATEGY 2: ENHANCED VWAP]*\n"
-        f"• Total Trades: `{s2_sum['count']}` (✅ {s2_sum['wins']} | ❌ {s2_sum['losses']})\n"
-        f"• Win Rate: `{s2_sum['win_rate']:.1f}%`\n"
-        f"• Net PnL (Spot): *{s2_sum['pnl']:+.2f} pts*\n"
-    )
-    if s2_sum["top_winner"]:
-        report += f"• Best: `{s2_sum['top_winner']['ticker']}` ({s2_sum['top_winner']['pnl']:+.2f} pts)\n"
-    if s2_sum["top_loser"]:
-        report += f"• Worst: `{s2_sum['top_loser']['ticker']}` ({s2_sum['top_loser']['pnl']:+.2f} pts)\n"
-
-    total_pts = s1_sum['pnl'] + s2_sum['pnl']
-    report += (
-        f"\n════════════════════════════\n"
-        f"🎯 *COMBINED RESULT:* *{total_pts:+.2f} pts*\n"
+    bearish = (
+        d.Close < d.EMA20 < d.EMA50
+        and w.Close < w.EMA20
+        and h.Close < h.EMA20 < h.EMA50
     )
 
-    send_telegram(report)
-    print("Report sent successfully.")
+    if not bullish and not bearish:
+        SWING_CACHE[ticker] = {
+            "date": today,
+            "signal": None
+        }
+        return None
 
-# =====================================================================
-# 7. MAIN ENTRYPOINT
-# =====================================================================
+    typ = "CALL" if bullish else "PUT"
+    atm, itm = get_strikes(price, step, typ)
+
+    signal = {
+        "type": typ,
+        "price": price,
+        "atm": atm,
+        "itm": itm
+    }
+
+    SWING_CACHE[ticker] = {
+        "date": today,
+        "signal": signal
+    }
+
+    return signal
+
+
+# ============================================================
+# MAIN SCAN ENGINE
+# ============================================================
+
+def run_scan(group):
+    running, entry_allowed, squareoff, now = market_status()
+
+    if not running:
+        print(
+            f"{group}: outside market session "
+            f"({now:%H:%M:%S} IST)"
+        )
+        return
+
+    symbols = list(SECTOR_MAPS[group])
+
+    file_s1 = f"trade_state_s1_{group}.json"
+    file_s2 = f"trade_state_s2_{group}.json"
+    file_s3 = f"trade_state_s3_{group}.json"
+    file_sw = f"trade_state_swing_{group}.json"
+
+    state1 = load_state(file_s1, symbols)
+    state2 = load_state(file_s2, symbols)
+    state3 = load_state(file_s3, symbols)
+    swing_state = load_state(file_sw, symbols)
+
+    print(
+        f"{group}: scanning {len(symbols)} tickers "
+        f"at {now:%H:%M:%S} IST"
+    )
+
+    for ticker, step in SECTOR_MAPS[group].items():
+        try:
+            raw = download_data(
+                ticker, "7d", TIMEFRAME
+            )
+
+            bars = completed_five_minute_bars(raw)
+
+            if len(bars) >= 220:
+                pivot = daily_pivot(ticker)
+
+                scan_intraday_symbol(
+                    ticker,
+                    step,
+                    state1,
+                    state2,
+                    bars,
+                    pivot,
+                    entry_allowed,
+                    squareoff
+                )
+
+                # New Strategy 3.
+                scan_s3_symbol(
+                    ticker,
+                    step,
+                    state3,
+                    bars,
+                    pivot,
+                    entry_allowed,
+                    squareoff
+                )
+
+            # Swing scan once per ticker per trading day.
+            last_checked = (
+                swing_state["last_processed"].get(ticker, "")
+            )
+
+            today = now.date().isoformat()
+
+            if last_checked != today:
+                signal = swing_signal(ticker, step)
+
+                if signal:
+                    telegram_key = (
+                        f"{today}:{signal['type']}"
+                    )
+
+                    old_key = (
+                        swing_state["positions"]
+                        .get(ticker, {})
+                        .get("swing_signal_key", "")
+                    )
+
+                    if old_key != telegram_key:
+                        send_telegram(
+                            f"SWING {signal['type']} SETUP: "
+                            f"{ticker}\n"
+                            f"Underlying: {signal['price']:.2f}\n"
+                            f"Indicative ATM: {signal['atm']} "
+                            f"| ITM: {signal['itm']}\n"
+                            "Weekly + Daily + 4H alignment.\n"
+                            "Yahoo underlying signal only."
+                        )
+
+                    swing_state["positions"].setdefault(
+                        ticker, default_position()
+                    )["swing_signal_key"] = telegram_key
+
+                swing_state["last_processed"][ticker] = today
+
+        except Exception as exc:
+            print(f"{group} / {ticker}: scan error: {exc}")
+
+    save_state(file_s1, state1)
+    save_state(file_s2, state2)
+    save_state(file_s3, state3)
+    save_state(file_sw, swing_state)
+
+    print(f"{group}: scan completed.")
+
+
+# ============================================================
+# DAILY REPORT - S1, S2 AND S3
+# ============================================================
+
+def generate_report():
+    today = current_time().date().isoformat()
+
+    report_lines = [
+        f"DAILY SCANNER REPORT | {today}",
+        "Yahoo Finance underlying data.",
+        "P&L = underlying spot points, NOT option premium P&L."
+    ]
+
+    combined = 0.0
+
+    for strategy in ("s1", "s2", "s3"):
+        trades = []
+
+        for group in SECTOR_MAPS:
+            filename = Path(
+                f"trade_state_{strategy}_{group}.json"
+            )
+
+            if not filename.exists():
+                continue
+
+            try:
+                saved = json.loads(
+                    filename.read_text(encoding="utf-8")
+                )
+
+                trades.extend(
+                    trade
+                    for trade in saved.get("closed_trades", [])
+                    if trade.get("date") == today
+                )
+
+            except Exception as exc:
+                print(
+                    f"Report read error {filename}: {exc}"
+                )
+
+        wins = [
+            trade for trade in trades
+            if float(trade.get("pnl", 0)) > 0
+        ]
+
+        losses = [
+            trade for trade in trades
+            if float(trade.get("pnl", 0)) < 0
+        ]
+
+        pnl = sum(
+            float(trade.get("pnl", 0))
+            for trade in trades
+        )
+
+        combined += pnl
+
+        win_rate = (
+            100 * len(wins) / len(trades)
+            if trades else 0
+        )
+
+        report_lines.extend([
+            "",
+            f"{strategy.upper()}: {len(trades)} closed trades",
+            f"Wins: {len(wins)} | Losses: {len(losses)}",
+            f"Win rate: {win_rate:.1f}%",
+            f"Net: {pnl:+.2f} underlying spot points"
+        ])
+
+    report_lines.extend([
+        "",
+        f"Combined S1 + S2 + S3: {combined:+.2f} "
+        "underlying spot points",
+        "",
+        "Swing alerts are separate trend setups.",
+        "No option premium, brokerage, slippage or "
+        "statutory charges are included."
+    ])
+
+    message = "\n".join(report_lines)
+
+    print(message)
+    send_telegram(message)
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--group", choices=list(SECTOR_MAPS.keys()), help="Sector group to monitor")
-    parser.add_argument("--report", action="store_true", help="Generate post-5 PM summary report")
+
+    parser.add_argument(
+        "--group",
+        choices=list(SECTOR_MAPS)
+    )
+
+    parser.add_argument(
+        "--report",
+        action="store_true"
+    )
+
     args = parser.parse_args()
 
     if args.report:
-        generate_daily_report()
+        generate_report()
         return
 
     if not args.group:
-        print("Error: Specify either --group <group_name> or --report")
-        return
+        parser.error("Specify --group or --report")
 
-    group_name = args.group
-    strike_dict = SECTOR_MAPS[group_name]
-    ist = pytz.timezone("Asia/Kolkata")
-    print(f"🚀 Dual-Strategy Worker active for [{group_name}]. Monitoring {len(strike_dict)} tickers on {TIMEFRAME} (09:30 - 15:15 IST)...")
+    group = args.group
+
+    print(
+        f"Yahoo-only scanner started: {group}; "
+        f"{len(SECTOR_MAPS[group])} tickers."
+    )
 
     while True:
-        now_ist = datetime.datetime.now(ist)
-        total_mins = now_ist.hour * 60 + now_ist.minute
+        running, _, _, now = market_status()
 
-        # Terminate script after 3:15 PM IST (15:15 = 915 mins) or on weekends
-        if total_mins > 915 or now_ist.weekday() > 4:
-            print(f"[{group_name}] Session reached 3:15 PM IST cutoff. Concluding execution.")
+        if now.weekday() >= 5:
+            print("Weekend. Worker stopped.")
             break
 
-        # Run scans once clock passes 9:30 AM IST (09:30 = 570 mins)
-        if total_mins >= 570:
-            try:
-                run_scan(group_name, strike_dict)
-            except Exception as e:
-                print(f"[{group_name}] Scan cycle error: {e}")
-        else:
-            print(f"[{group_name}] Time: {now_ist.strftime('%H:%M:%S IST')} — Waiting for 9:30 AM IST session start...")
+        if now.hour * 60 + now.minute > 15 * 60 + 15:
+            print("Market session finished.")
+            break
 
-        time.sleep(180)  # Polling interval synchronized to 3-minute candle close
+        if running:
+            run_scan(group)
+        else:
+            print(
+                f"Waiting for 09:30 IST. "
+                f"Current time: {now:%H:%M:%S}"
+            )
+
+        time.sleep(POLL_SECONDS)
+
 
 if __name__ == "__main__":
     main()
