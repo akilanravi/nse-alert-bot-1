@@ -1,11 +1,13 @@
+
 name: 5M Parallel Telegram Alert Scanner
 
 on:
   schedule:
-    # 9:10 AM IST (3:40 AM UTC), Monday to Friday - Live Scanners
-    - cron: '40 3 * * 1-5'
-    # 5:05 PM IST (11:35 AM UTC), Monday to Friday - Daily Performance Report
+    # 9:20 AM IST (3:50 AM UTC), Monday to Friday
+    - cron: '50 3 * * 1-5'
+    # 5:05 PM IST (11:35 AM UTC), Monday to Friday
     - cron: '35 11 * * 1-5'
+
   workflow_dispatch:
     inputs:
       action:
@@ -19,12 +21,24 @@ on:
 
 permissions:
   contents: write
+  actions: read
+
+# Prevent overlapping workflow runs from committing state simultaneously.
+concurrency:
+  group: five-minute-telegram-scanner-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   run-parallel-scanners:
-    if: github.event.schedule == '40 3 * * 1-5' || github.event.inputs.action == 'scan'
+    if: |
+      (github.event_name == 'schedule' &&
+       github.event.schedule == '50 3 * * 1-5') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.action == 'scan')
+
     runs-on: ubuntu-latest
-    timeout-minutes: 370
+    timeout-minutes: 360
+
     strategy:
       fail-fast: false
       matrix:
@@ -38,46 +52,119 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: Install Dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install yfinance pandas numpy pytz requests
 
       - name: Run Dedicated Sector Worker
-        run: |
-          python bot.py --group ${{ matrix.group }}
+        env:
+          SECTOR_GROUP: ${{ matrix.group }}
 
-      - name: Save Partitioned Trailing States
+          TELEGRAM_BOT_TOKEN_1: ${{ secrets.TELEGRAM_BOT_TOKEN_1 }}
+          TELEGRAM_CHAT_ID_1: ${{ secrets.TELEGRAM_CHAT_ID_1 }}
+          TELEGRAM_BOT_TOKEN_2: ${{ secrets.TELEGRAM_BOT_TOKEN_2 }}
+          TELEGRAM_CHAT_ID_2: ${{ secrets.TELEGRAM_CHAT_ID_2 }}
+
+          BROKER_PROVIDER: ${{ secrets.BROKER_PROVIDER }}
+          BROKER_API_KEY: ${{ secrets.BROKER_API_KEY }}
+          BROKER_API_SECRET: ${{ secrets.BROKER_API_SECRET }}
+          BROKER_ACCESS_TOKEN: ${{ secrets.BROKER_ACCESS_TOKEN }}
+
+        run: |
+          python bot.py --group "${SECTOR_GROUP}"
+
+      - name: Upload Sector State Files
         if: always()
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main || true
-          git add trade_state_s1_${{ matrix.group }}.json trade_state_s2_${{ matrix.group }}.json || true
-          git diff --staged --quiet || git commit -m "Save dual states for ${{ matrix.group }} [skip ci]"
-          git push || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-state-${{ matrix.group }}
+          path: |
+            trade_state_s1_${{ matrix.group }}.json
+            trade_state_s2_${{ matrix.group }}.json
+          if-no-files-found: ignore
+          retention-days: 7
 
-  send-daily-report:
-    if: github.event.schedule == '35 11 * * 1-5' || github.event.inputs.action == 'report'
+  save-scanner-state:
+    if: |
+      always() &&
+      (github.event_name == 'schedule' &&
+       github.event.schedule == '50 3 * * 1-5' ||
+       github.event_name == 'workflow_dispatch' &&
+       inputs.action == 'scan') &&
+      needs.run-parallel-scanners.result != 'cancelled'
+
+    needs: run-parallel-scanners
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Sector State Files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scanner-state-*
+          path: ./scanner-state
+          merge-multiple: true
+          if-no-artifact-found: ignore
+
+      - name: Commit Combined State Files
+        run: |
+          set -e
+
+          if ! find ./scanner-state -maxdepth 1 -name 'trade_state_*.json' -print -quit | grep -q .; then
+            echo "No state files were produced. Nothing to commit."
+            exit 0
+          fi
+
+          cp ./scanner-state/trade_state_*.json .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add trade_state_*.json
+
+          if git diff --cached --quiet; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update combined scanner states [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  send-daily-report:
+    if: |
+      (github.event_name == 'schedule' &&
+       github.event.schedule == '35 11 * * 1-5') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.action == 'report')
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
-        run: |
-          pip install yfinance pandas numpy pytz requests
-
-      - name: Generate & Dispatch 5 PM PnL Report
-        run: |
-          python bot.py --report
+      -
