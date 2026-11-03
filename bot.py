@@ -15,7 +15,6 @@ import yfinance as yf
 # ==============================================================================
 IST = pytz.timezone('Asia/Kolkata')
 
-# Reads tokens from GitHub Actions environment secrets
 TELEGRAM_BOT_CONFIGS = [
     {
         "token": os.getenv("TELEGRAM_BOT_TOKEN_1", "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms"),
@@ -28,7 +27,7 @@ TELEGRAM_BOT_CONFIGS = [
 ]
 
 def send_telegram_alert(message: str):
-    """Broadcasts messages to all configured Telegram channels."""
+    """Broadcasts messages to both configured Telegram channels."""
     for cfg in TELEGRAM_BOT_CONFIGS:
         token = cfg.get("token")
         chat_id = cfg.get("chat_id")
@@ -42,12 +41,10 @@ def send_telegram_alert(message: str):
             print(f"[ERROR] Failed to send Telegram message to {chat_id}: {e}")
 
 # ==============================================================================
-# 2. 210 F&O SYMBOLS SPLIT INTO 21 GROUPS OF 10
+# 2. 210 F&O SYMBOLS SPLIT INTO GROUPS OF 10
 # ==============================================================================
 RAW_SYMBOLS = [
-    # Indices
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "NIFTY_MID_SELECT.NS",
-    # F&O Stocks (Yahoo Finance .NS formatted)
     "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS",
     "ADANIENT.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS",
     "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS",
@@ -93,7 +90,7 @@ SYMBOL_GROUPS = {
 }
 
 # ==============================================================================
-# 3. INDICATOR CALCULATIONS
+# 3. TECHNICAL INDICATORS & COMPOSITE FORMULA
 # ==============================================================================
 def calculate_supertrend(df: pd.DataFrame, period: int, multiplier: float) -> pd.Series:
     high, low, close = df['high'], df['low'], df['close']
@@ -136,8 +133,65 @@ def calculate_pivot_r1(df: pd.DataFrame) -> pd.Series:
     pivot = (df['high'].shift(1) + df['low'].shift(1) + df['close'].shift(1)) / 3
     return (2 * pivot) - df['low'].shift(1)
 
+def compute_composite_strength(df: pd.DataFrame, prev_close: float) -> dict:
+    """
+    Computes your exact composite formula (-100 to +100) based on:
+    Momentum (1.00), VWAP (0.95), Volume (0.85), Range (0.60), Trend (0.50), OI (0.35)
+    """
+    if df.empty or len(df) < 5:
+        return {"score": 0.0, "ltp": 0.0, "chg_pct": 0.0, "vwap": 0.0, "range_pct": 0.0}
+
+    ltp = float(df['close'].iloc[-1])
+    day_high = float(df['high'].max())
+    day_low = float(df['low'].min())
+    day_open = float(df['open'].iloc[0])
+    day_vol = float(df['volume'].sum())
+
+    # 1. Momentum (Weight 1.00): |CHG%| > 0.5 counts
+    chg_pct = ((ltp - prev_close) / prev_close) * 100 if prev_close else 0.0
+    v_mom = np.clip(chg_pct / 3.0, -1.0, 1.0) if abs(chg_pct) > 0.5 else 0.0
+
+    # 2. VWAP (Weight 0.95): (LTP - VWAP) / VWAP
+    typical = (df['high'] + df['low'] + df['close']) / 3
+    vwap = (typical * df['volume']).sum() / (df['volume'].sum() + 1e-9)
+    vwap_dist = ((ltp - vwap) / vwap) * 100
+    v_vwap = np.clip(vwap_dist / 1.5, -1.0, 1.0)
+
+    # 3. Volume (Weight 0.85): > 1.5x median counts in direction of move
+    median_vol = 1_500_000
+    vol_ratio = day_vol / median_vol
+    v_vol = np.clip((vol_ratio - 1.0) / 3.0, 0.0, 1.0) * np.sign(chg_pct) if vol_ratio > 1.5 else 0.0
+
+    # 4. Range (Weight 0.60): (LTP - Low) / (High - Low)
+    rng = day_high - day_low
+    pos = (ltp - day_low) / (rng + 1e-9)
+    v_range = (pos - 0.5) * 2.0  # Normalized to [-1.0, 1.0]
+
+    # 5. Trend (Weight 0.50): Up if chg > 0.1 and ltp >= open; Down if chg < -0.1 and ltp < open
+    if chg_pct > 0.1 and ltp >= day_open:
+        v_trend = 1.0
+    elif chg_pct < -0.1 and ltp < day_open:
+        v_trend = -1.0
+    else:
+        v_trend = 0.0
+
+    # 6. Open Interest / Proxy (Weight 0.35)
+    v_oi = 1.0 if chg_pct > 0.5 else (-1.0 if chg_pct < -0.5 else 0.0)
+
+    weights = [1.00, 0.95, 0.85, 0.60, 0.50, 0.35]
+    values  = [v_mom, v_vwap, v_vol, v_range, v_trend, v_oi]
+    score = (sum(w * v for w, v in zip(weights, values)) / sum(weights)) * 100
+
+    return {
+        "score": round(score, 1),
+        "ltp": round(ltp, 2),
+        "chg_pct": round(chg_pct, 2),
+        "vwap": round(vwap, 2),
+        "range_pct": round(pos * 100, 1)
+    }
+
 # ==============================================================================
-# 4. STATE MANAGEMENT
+# 4. PERSISTENT STATE MANAGEMENT
 # ==============================================================================
 def get_state_file(group_name: str) -> str:
     return f"trade_state_{group_name}.json"
@@ -150,7 +204,7 @@ def load_group_state(group_name: str) -> dict:
                 return json.load(f)
         except Exception:
             pass
-    return {"open_positions": {}, "closed_trades": []}
+    return {"open_positions": {}, "closed_trades": {}, "latest_scores": {}}
 
 def save_group_state(group_name: str, state: dict):
     fname = get_state_file(group_name)
@@ -158,7 +212,50 @@ def save_group_state(group_name: str, state: dict):
         json.dump(state, f, indent=2)
 
 # ==============================================================================
-# 5. SCANNER PIPELINE (RUNS 09:30 - 15:30 IST)
+# 5. HALF-HOURLY TOP 5 BULLS & BOTTOM 5 BEARS DISPATCHER
+# ==============================================================================
+def dispatch_half_hourly_rankings(now_ist):
+    """
+    Collects latest scores across all group state files and sends Top 5 Bulls & Bottom 5 Bears.
+    Runs strictly every 30 minutes between 09:30 and 15:00 IST.
+    """
+    all_scores = {}
+    for f in os.listdir("."):
+        if f.startswith("trade_state_") and f.endswith(".json"):
+            try:
+                with open(f, 'r') as fp:
+                    data = json.load(fp)
+                    scores = data.get("latest_scores", {})
+                    all_scores.update(scores)
+            except Exception:
+                pass
+
+    if len(all_scores) < 10:
+        return
+
+    sorted_stocks = sorted(all_scores.items(), key=lambda item: item[1]['score'], reverse=True)
+    top_5 = sorted_stocks[:5]
+    bottom_5 = sorted_stocks[-5:]
+
+    msg = [
+        f"📊 *LIVE 30M MOMENTUM RANKINGS*",
+        f"⏰ *Time:* {now_ist.strftime('%H:%M IST')}",
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"🟢 *TOP 5 STRONGEST BULLS*"
+    ]
+    for rank, (sym, d) in enumerate(top_5, 1):
+        msg.append(f"{rank}. `{sym}`: *{d['score']:+0.1f} pts* | CMP: ₹{d['ltp']} ({d['chg_pct']:+0.2f}%) | VWAP: ₹{d['vwap']}")
+
+    msg.append("\n🔴 *BOTTOM 5 STRONGEST BEARS*")
+    for rank, (sym, d) in enumerate(reversed(bottom_5), 1):
+        msg.append(f"{rank}. `{sym}`: *{d['score']:+0.1f} pts* | CMP: ₹{d['ltp']} ({d['chg_pct']:+0.2f}%) | VWAP: ₹{d['vwap']}")
+
+    msg.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
+    send_telegram_alert("\n".join(msg))
+    print(f"[{now_ist.strftime('%H:%M:%S IST')}] Sent half-hourly Top 5 & Bottom 5 rankings.")
+
+# ==============================================================================
+# 6. SCANNER ENGINE (09:30 - 15:30 IST)
 # ==============================================================================
 def run_sector_scanner(group_name: str):
     symbols = SYMBOL_GROUPS.get(group_name, [])
@@ -166,24 +263,41 @@ def run_sector_scanner(group_name: str):
         print(f"Group '{group_name}' contains no symbols.")
         return
 
-    print(f"Starting continuous scanner for {group_name} with {len(symbols)} tickers.")
-    send_telegram_alert(f"🟢 *Scanner Started*: Group `{group_name}` ({len(symbols)} stocks)\nActive time: 09:30 - 15:30 IST")
+    print(f"Starting continuous scanner for {group_name} ({len(symbols)} symbols)...")
+    send_telegram_alert(
+        f"🟢 *5M Continuous Scanner Active: {group_name}*\n"
+        f"• Stocks Tracked: {len(symbols)}\n"
+        f"• Time Window: 09:30 to 15:30 IST\n"
+        f"• Half-hourly updates: 09:30 to 15:00 every 30 mins"
+    )
 
     state = load_group_state(group_name)
-    market_close_time = dtime(15, 30)
+    start_time = dtime(9, 30)
+    end_time = dtime(15, 30)
+
+    # Half-hourly schedule: (hour, minute)
+    half_hourly_slots = [
+        (9, 30), (10, 0), (10, 30), (11, 0), (11, 30),
+        (12, 0), (12, 30), (13, 0), (13, 30), (14, 0),
+        (14, 30), (15, 0)
+    ]
+    dispatched_slots = set()
 
     while True:
         now_ist = datetime.now(IST)
-        current_time = now_ist.time()
+        curr_time = now_ist.time()
 
-        # Stop scanning at 15:30 IST
-        if current_time >= market_close_time:
-            print(f"[{now_ist.strftime('%H:%M:%S')}] Market closed (15:30 IST). Stopping continuous scan.")
+        if curr_time < start_time:
+            time.sleep(15)
+            continue
+
+        if curr_time >= end_time:
+            print(f"[{now_ist.strftime('%H:%M:%S')}] 15:30 IST reached. Exiting scanner.")
             break
 
+        # Process each symbol in the group
         for symbol in symbols:
             try:
-                # Fetch 5-minute candles
                 ticker = yf.Ticker(symbol)
                 df = ticker.history(period="5d", interval="5m")
                 if df.empty or len(df) < 30:
@@ -191,6 +305,7 @@ def run_sector_scanner(group_name: str):
 
                 df.columns = [c.lower() for c in df.columns]
 
+                # Compute Indicators
                 st_10_2 = calculate_supertrend(df, period=10, multiplier=2.0)
                 st_7_2 = calculate_supertrend(df, period=7, multiplier=2.0)
                 rsi = calculate_rsi(df['close'], period=14)
@@ -200,10 +315,18 @@ def run_sector_scanner(group_name: str):
                 curr_close = float(df['close'].iloc[-1])
                 curr_high = float(df['high'].iloc[-1])
                 curr_st_7_2 = int(st_7_2.iloc[-1])
-
                 clean_sym = symbol.replace(".NS", "")
 
-                # ----------------- Check Exit Conditions -----------------
+                # Record Composite Strength Score for Half-Hourly Rankings
+                prev_day_close = float(df['close'].iloc[0]) # Baseline reference
+                score_data = compute_composite_strength(df, prev_day_close)
+                if "latest_scores" not in state:
+                    state["latest_scores"] = {}
+                state["latest_scores"][clean_sym] = score_data
+
+                # ------------------------------------------------------
+                # CHECK EXITS & BEAR REVERSAL MESSAGE
+                # ------------------------------------------------------
                 if clean_sym in state["open_positions"]:
                     pos = state["open_positions"][clean_sym]
                     pos["peak_price"] = max(pos["peak_price"], curr_high)
@@ -216,23 +339,28 @@ def run_sector_scanner(group_name: str):
 
                     if curr_close <= effective_sl:
                         exit_flag = True
-                        exit_reason = f"Trailing SL (₹{effective_sl:.2f})" if effective_sl == trailing_sl else f"Initial 10% SL (₹{initial_sl:.2f})"
+                        exit_reason = f"Trailing Stop Loss Hit (10% from Peak ₹{pos['peak_price']:.2f})" if effective_sl == trailing_sl else "Initial 10% Stop Loss Hit"
                     elif curr_st_7_2 == -1:
                         exit_flag = True
-                        exit_reason = "Supertrend (7,2) Bearish Flip"
+                        exit_reason = "Supertrend (7, 2) Bearish Reversal"
 
                     if exit_flag:
                         pnl = ((curr_close - pos['entry_price']) / pos['entry_price']) * 100
-                        exit_msg = (
-                            f"🛑 *EXIT TRIGGERED: {clean_sym}*\n"
-                            f"• Reason: {exit_reason}\n"
+                        bear_msg = (
+                            f"🔴 *BEAR REVERSAL / EXIT SIGNAL: {clean_sym}*\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"• Reason: *{exit_reason}*\n"
                             f"• Exit Price: ₹{curr_close:.2f}\n"
                             f"• Entry Price: ₹{pos['entry_price']:.2f}\n"
                             f"• PnL: *{pnl:+.2f}%*\n"
+                            f"• Active SL Level: ₹{effective_sl:.2f}\n"
+                            f"• Timeframe: 5M\n"
                             f"• Time: {now_ist.strftime('%H:%M:%S IST')}"
                         )
-                        send_telegram_alert(exit_msg)
+                        send_telegram_alert(bear_msg)
 
+                        if "closed_trades" not in state or isinstance(state["closed_trades"], dict):
+                            state["closed_trades"] = []
                         state["closed_trades"].append({
                             "symbol": clean_sym,
                             "entry_price": pos["entry_price"],
@@ -245,13 +373,15 @@ def run_sector_scanner(group_name: str):
                         save_group_state(group_name, state)
                     continue
 
-                # ----------------- Check Strategy 1 Entry -----------------
-                cond_st = (st_10_2.iloc[-1] == 1)
+                # ------------------------------------------------------
+                # CHECK STRATEGY 1 ENTRY & BULL MESSAGE
+                # ------------------------------------------------------
+                cond_st10 = (st_10_2.iloc[-1] == 1)
                 cond_rsi = (rsi.iloc[-1] > 60)
                 cond_bb = (curr_close > bb_upper.iloc[-1])
                 cond_r1 = (curr_close > r1.iloc[-1])
 
-                if cond_st and cond_rsi and cond_bb and cond_r1:
+                if cond_st10 and cond_rsi and cond_bb and cond_r1:
                     initial_sl = curr_close * 0.90
                     state["open_positions"][clean_sym] = {
                         "entry_price": curr_close,
@@ -261,27 +391,47 @@ def run_sector_scanner(group_name: str):
                     }
                     save_group_state(group_name, state)
 
-                    entry_msg = (
-                        f"🚀 *STRATEGY 1 ENTRY: {clean_sym}*\n"
+                    bull_msg = (
+                        f"🟢 *BULL ENTRY SIGNAL: {clean_sym}*\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
                         f"• Entry Price: ₹{curr_close:.2f}\n"
                         f"• Initial Stop Loss (10%): ₹{initial_sl:.2f}\n"
-                        f"• RSI: {rsi.iloc[-1]:.2f}\n"
-                        f"• Supertrend (10,2): Bullish\n"
+                        f"• Trailing SL: 10% Ratchet\n"
+                        f"• RSI (14): {rsi.iloc[-1]:.2f} (> 60)\n"
+                        f"• Upper Bollinger: ₹{bb_upper.iloc[-1]:.2f}\n"
+                        f"• Pivot R1: ₹{r1.iloc[-1]:.2f}\n"
+                        f"• Supertrend (10, 2): Bullish\n"
+                        f"• Timeframe: 5M\n"
                         f"• Time: {now_ist.strftime('%H:%M:%S IST')}"
                     )
-                    send_telegram_alert(entry_msg)
+                    send_telegram_alert(bull_msg)
 
             except Exception as e:
-                print(f"Error scanning {symbol}: {e}")
+                print(f"Error checking {symbol}: {e}")
 
-        # Rate-limiting between group iterations
+        # Save states per round
+        save_group_state(group_name, state)
+
+        # ------------------------------------------------------
+        # HALF-HOURLY RANKINGS DISPATCH (RUN ONCE BY GROUP_1)
+        # ------------------------------------------------------
+        current_slot = (curr_time.hour, curr_time.minute)
+        for target_h, target_m in half_hourly_slots:
+            if curr_time.hour == target_h and abs(curr_time.minute - target_m) < 2:
+                slot_key = f"{target_h}:{target_m}"
+                if slot_key not in dispatched_slots:
+                    # Let group_1 lead the dispatch to prevent redundant duplicate messages
+                    if group_name == "group_1":
+                        dispatch_half_hourly_rankings(now_ist)
+                    dispatched_slots.add(slot_key)
+
         time.sleep(60)
 
 # ==============================================================================
-# 6. EOD SUMMARY REPORT
+# 7. END-OF-DAY PERFORMANCE REPORT
 # ==============================================================================
 def generate_eod_report():
-    """Aggregates all state files and dispatches the daily summary report."""
+    """Aggregates all trades and sends the 15:35 IST summary."""
     now_ist = datetime.now(IST)
     all_closed = []
     all_open = []
@@ -291,7 +441,9 @@ def generate_eod_report():
             try:
                 with open(f, 'r') as fp:
                     data = json.load(fp)
-                    all_closed.extend(data.get("closed_trades", []))
+                    trades = data.get("closed_trades", [])
+                    if isinstance(trades, list):
+                        all_closed.extend(trades)
                     for sym, pos in data.get("open_positions", {}).items():
                         all_open.append({"symbol": sym, **pos})
             except Exception:
@@ -303,35 +455,35 @@ def generate_eod_report():
     avg_pnl = np.mean([t["pnl_pct"] for t in all_closed]) if total_trades > 0 else 0.0
 
     report_lines = [
-        f"📊 *EOD TRADING PERFORMANCE REPORT*",
+        f"📊 *EOD 5M SCANNER REPORT*",
         f"📅 Date: {now_ist.strftime('%d-%b-%Y')}",
-        f"----------------------------------------",
-        f"• Total Closed Trades: *{total_trades}*",
-        f"• Winning Trades: *{len(wins)}* ({win_rate:.1f}%)",
-        f"• Average Trade Return: *{avg_pnl:+.2f}%*",
-        f"• Positions Carrying Overnight: *{len(all_open)}*",
-        f"----------------------------------------"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"• Total Trades: *{total_trades}*",
+        f"• Win Rate: *{win_rate:.1f}%* ({len(wins)}/{total_trades})",
+        f"• Average Return: *{avg_pnl:+.2f}%*",
+        f"• Open Active Positions: *{len(all_open)}*",
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     ]
 
     if all_closed:
-        report_lines.append("\n*Closed Trades Breakdown:*")
+        report_lines.append("\n*Closed Trades Today:*")
         for t in all_closed[-10:]:
             report_lines.append(f"• `{t['symbol']}`: {t['pnl_pct']:+.2f}% ({t['exit_reason']})")
 
     if all_open:
-        report_lines.append("\n*Open Active Positions:*")
+        report_lines.append("\n*Open Positions Carrying Over:*")
         for pos in all_open:
             report_lines.append(f"• `{pos['symbol']}`: Entry ₹{pos['entry_price']:.2f} | Peak ₹{pos['peak_price']:.2f}")
 
     send_telegram_alert("\n".join(report_lines))
-    print("Daily EOD report successfully dispatched to Telegram.")
+    print("EOD report sent successfully.")
 
 # ==============================================================================
-# 7. CLI ENTRY POINT
+# 8. EXECUTION ENTRY POINT
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--group", type=str, help="Symbol group to scan (e.g. group_1)")
+    parser.add_argument("--group", type=str, help="Group name (e.g. group_1)")
     parser.add_argument("--report", action="store_true", help="Generate EOD summary report")
     args = parser.parse_args()
 
@@ -340,4 +492,4 @@ if __name__ == "__main__":
     elif args.group:
         run_sector_scanner(args.group)
     else:
-        print("Please supply --group <group_name> or --report")
+        print("Please specify --group <group_name> or --report")
