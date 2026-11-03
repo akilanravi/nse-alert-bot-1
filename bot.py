@@ -1,3 +1,17 @@
+#!/usr/bin/env python3
+"""
+NSE 5-minute alert scanner  (v5 - single job, run every 5 minutes)
+
+Each run:
+  1. downloads 5m candles for every symbol in ONE batch (yfinance),
+  2. drops the candle that is still forming,
+  3. checks exits / entries on the last COMPLETED candle,
+  4. sends the half-hourly Top-5 / Bottom-5 ranking when a slot is due,
+  5. sends the end-of-day report once, after 15:35 IST.
+
+State (open positions, closed trades, "already sent" flags) lives in trade_state.json
+and is committed back to the repo by the workflow.
+"""
 import argparse
 import html
 import json
@@ -16,7 +30,7 @@ IST = ZoneInfo("Asia/Kolkata")
 STATE_FILE = "trade_state.json"
 
 # ==============================================================================
-# SETTINGS (change here)
+# SETTINGS
 # ==============================================================================
 INITIAL_SL_PCT = 0.10        # initial stop loss on the UNDERLYING price (not option premium)
 TRAIL_PCT = 0.10             # trailing stop, % below the peak price since entry
@@ -35,7 +49,7 @@ RANKING_SLOTS = [
 ]
 
 # ==============================================================================
-# SYMBOLS  (Yahoo Finance tickers). A ticker with no data is reported once a day.
+# SYMBOLS
 # ==============================================================================
 RAW_SYMBOLS = [
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "NIFTY_MID_SELECT.NS",
@@ -90,13 +104,19 @@ def display_name(symbol: str) -> str:
 
 
 # ==============================================================================
-# TELEGRAM
+# TELEGRAM CONFIGURATION
 # ==============================================================================
+DEFAULT_TELEGRAM_TARGETS = [
+    ("1", "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms", "8865083462"),
+    ("2", "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k", "846124589"),
+]
+
 def telegram_targets():
+    """Reads environment secrets if present, falling back to preconfigured bots."""
     targets = []
-    for n in ("1", "2"):
-        token = os.getenv(f"TELEGRAM_BOT_TOKEN_{n}", "").strip()
-        chat = os.getenv(f"TELEGRAM_CHAT_ID_{n}", "").strip()
+    for n, def_token, def_chat in DEFAULT_TELEGRAM_TARGETS:
+        token = os.getenv(f"TELEGRAM_BOT_TOKEN_{n}", "").strip() or def_token
+        chat = os.getenv(f"TELEGRAM_CHAT_ID_{n}", "").strip() or def_chat
         if token and chat:
             targets.append((n, token, chat))
     return targets
@@ -130,7 +150,7 @@ def send_telegram(message: str, dry_run: bool = False) -> bool:
         for _ in range(3):
             try:
                 r = requests.post(url, json=payload, timeout=15)
-            except Exception as e:  # do not print e: it can contain the URL (= the token)
+            except Exception as e:
                 print(f"[ERROR] Telegram recipient {n}: {type(e).__name__}")
                 time.sleep(2)
                 continue
@@ -172,14 +192,12 @@ def _clean_frame(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
         idx = idx.tz_localize("UTC")
     df.index = idx.tz_convert(IST)
     df = df[~df.index.duplicated(keep="last")].sort_index()
-    # drop the candle that is still forming
     if df.index[-1] + timedelta(minutes=CANDLE_MIN) > now:
         df = df.iloc[:-1]
     return df
 
 
 def fetch_all(symbols, now: datetime):
-    """Returns ({symbol: DataFrame}, [symbols with no data])."""
     data, missing = {}, []
     for i in range(0, len(symbols), CHUNK):
         chunk = symbols[i:i + CHUNK]
@@ -263,7 +281,6 @@ def daily_pivot_r1(df: pd.DataFrame, today):
 
 
 def composite_strength(today_df: pd.DataFrame, prev_close: float, avg_daily_vol: float) -> dict:
-    """-100..+100 score from TODAY's candles only (weights unchanged from your formula)."""
     ltp = float(today_df["close"].iloc[-1])
     day_high = float(today_df["high"].max())
     day_low = float(today_df["low"].min())
@@ -276,11 +293,10 @@ def composite_strength(today_df: pd.DataFrame, prev_close: float, avg_daily_vol:
     typical = (today_df["high"] + today_df["low"] + today_df["close"]) / 3
     if day_vol > 0:
         vwap = float((typical * today_df["volume"]).sum() / day_vol)
-    else:  # indices have no volume on Yahoo
+    else:
         vwap = float(typical.mean())
     v_vwap = float(np.clip(((ltp - vwap) / vwap * 100) / 1.5, -1, 1)) if vwap else 0.0
 
-    # volume vs what is normal by this time of day (average of earlier sessions, pro-rated)
     sessions_fraction = min(1.0, len(today_df) / 75.0)
     expected = avg_daily_vol * sessions_fraction
     ratio = day_vol / expected if expected > 0 else 0.0
@@ -297,7 +313,7 @@ def composite_strength(today_df: pd.DataFrame, prev_close: float, avg_daily_vol:
     else:
         v_trend = 0.0
 
-    v_oi = 1.0 if chg_pct > 0.5 else (-1.0 if chg_pct < -0.5 else 0.0)  # proxy
+    v_oi = 1.0 if chg_pct > 0.5 else (-1.0 if chg_pct < -0.5 else 0.0)
 
     weights = [1.00, 0.95, 0.85, 0.60, 0.50, 0.35]
     values = [v_mom, v_vwap, v_vol, v_range, v_trend, v_oi]
@@ -311,7 +327,7 @@ def composite_strength(today_df: pd.DataFrame, prev_close: float, avg_daily_vol:
 
 
 # ==============================================================================
-# STATE
+# STATE MANAGEMENT
 # ==============================================================================
 def default_state() -> dict:
     return {
@@ -393,7 +409,6 @@ def exit_message(name, reason, exit_price, pos, pnl, eff_sl, candle_ts, now) -> 
 # PER-SYMBOL LOGIC
 # ==============================================================================
 def analyse(name: str, df: pd.DataFrame, now: datetime, state: dict, dry_run: bool):
-    """Checks exit/entry on the last COMPLETED candle. Returns the strength score (or None)."""
     last_ts = df.index[-1]
     today = now.date()
     if last_ts.date() != today:
@@ -413,7 +428,6 @@ def analyse(name: str, df: pd.DataFrame, now: datetime, state: dict, dry_run: bo
     cur_high = float(df["high"].iloc[-1])
     candle_key = last_ts.isoformat()
 
-    # ---- strength score (today's candles only) ----
     today_df = df[df.index.date == today]
     prior = df[df.index.date < today]
     prev_close = float(prior["close"].iloc[-1]) if not prior.empty else float(today_df["open"].iloc[0])
@@ -422,7 +436,7 @@ def analyse(name: str, df: pd.DataFrame, now: datetime, state: dict, dry_run: bo
 
     positions = state["open_positions"]
 
-    # ---- exits ----
+    # Exits
     if name in positions:
         pos = positions[name]
         entry_ts = pd.Timestamp(pos["entry_ts"]) if pos.get("entry_ts") else None
@@ -459,7 +473,7 @@ def analyse(name: str, df: pd.DataFrame, now: datetime, state: dict, dry_run: bo
             state["last_exit_candle"][name] = candle_key
         return score
 
-    # ---- entries (long only) ----
+    # Entries
     if state["last_exit_candle"].get(name) == candle_key:
         return score
     vals = [st10.iloc[-1], rsi14.iloc[-1], bb_up.iloc[-1], r1]
@@ -586,7 +600,6 @@ def run_once(dry_run: bool = False, now: datetime = None):
     data, missing = fetch_all(symbols, now)
     print(f"Downloaded {len(data)} symbols, {len(missing)} without data.")
 
-    # dry-run: behave as if it is just after the newest candle closed
     if dry_run and data:
         newest = max(df.index[-1] for df in data.values())
         now = newest + timedelta(minutes=CANDLE_MIN + 1)
