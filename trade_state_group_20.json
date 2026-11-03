@@ -1,0 +1,83 @@
+{
+  "open_positions": {
+    "MAXHEALTH": {
+      "entry_price": 893.7999877929688,
+      "initial_sl": 804.4199890136719,
+      "peak_price": 896.3499755859375,
+      "entry_time": "2026-11-03 15:12:16"
+    }
+  },
+  "closed_trades": {},
+  "latest_scores": {
+    "BSE": {
+      "score": 97.7,
+      "ltp": 3658.0,
+      "chg_pct": 6.21,
+      "vwap": 3540.94,
+      "range_pct": 92.0
+    },
+    "CDSL": {
+      "score": 97.0,
+      "ltp": 1319.0,
+      "chg_pct": 8.88,
+      "vwap": 1282.69,
+      "range_pct": 89.4
+    },
+    "ANGELONE": {
+      "score": 95.7,
+      "ltp": 310.7,
+      "chg_pct": 7.88,
+      "vwap": 301.2,
+      "range_pct": 84.7
+    },
+    "KEI": {
+      "score": 3.7,
+      "ltp": 3882.0,
+      "chg_pct": -0.52,
+      "vwap": 3852.78,
+      "range_pct": 66.6
+    },
+    "PRESTIGE": {
+      "score": 78.4,
+      "ltp": 1524.0,
+      "chg_pct": 8.61,
+      "vwap": 1450.34,
+      "range_pct": 94.2
+    },
+    "POLICYBZR": {
+      "score": -98.5,
+      "ltp": 922.5,
+      "chg_pct": -7.6,
+      "vwap": 953.4,
+      "range_pct": 5.5
+    },
+    "MAXHEALTH": {
+      "score": 95.4,
+      "ltp": 892.35,
+      "chg_pct": 6.69,
+      "vwap": 869.14,
+      "range_pct": 83.9
+    },
+    "SONACOMS": {
+      "score": 94.8,
+      "ltp": 900.0,
+      "chg_pct": 5.05,
+      "vwap": 883.86,
+      "range_pct": 81.6
+    },
+    "SUZLON": {
+      "score": -40.5,
+      "ltp": 35.65,
+      "chg_pct": -3.65,
+      "vwap": 35.13,
+      "range_pct": 52.8
+    },
+    "NHPC": {
+      "score": 97.2,
+      "ltp": 79.18,
+      "chg_pct": 9.27,
+      "vwap": 76.86,
+      "range_pct": 90.2
+    }
+  }
+}

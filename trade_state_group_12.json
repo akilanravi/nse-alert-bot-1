@@ -1,0 +1,93 @@
+{
+  "open_positions": {
+    "M&M": {
+      "entry_price": 2901.0,
+      "initial_sl": 2610.9,
+      "peak_price": 2901.0,
+      "entry_time": "2026-11-03 15:14:45"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "LTTS",
+      "entry_price": 4257.89990234375,
+      "exit_price": 4237.2001953125,
+      "pnl_pct": -0.4861482774608182,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:03:25"
+    },
+    {
+      "symbol": "LALPATHLAB",
+      "entry_price": 1932.0,
+      "exit_price": 1921.199951171875,
+      "pnl_pct": -0.5590087385157867,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:28:10"
+    }
+  ],
+  "latest_scores": {
+    "LALPATHLAB": {
+      "score": 53.9,
+      "ltp": 1926.7,
+      "chg_pct": 2.22,
+      "vwap": 1912.65,
+      "range_pct": 69.7
+    },
+    "LAURUSLABS": {
+      "score": 70.8,
+      "ltp": 2308.0,
+      "chg_pct": 7.45,
+      "vwap": 2299.71,
+      "range_pct": 56.8
+    },
+    "LICHSGFIN": {
+      "score": -49.4,
+      "ltp": 503.65,
+      "chg_pct": -1.32,
+      "vwap": 502.4,
+      "range_pct": 40.1
+    },
+    "LICI": {
+      "score": 91.7,
+      "ltp": 397.5,
+      "chg_pct": 2.36,
+      "vwap": 391.48,
+      "range_pct": 88.5
+    },
+    "LT": {
+      "score": 84.4,
+      "ltp": 3929.0,
+      "chg_pct": 1.59,
+      "vwap": 3856.71,
+      "range_pct": 83.8
+    },
+    "LTF": {
+      "score": 88.7,
+      "ltp": 252.06,
+      "chg_pct": 4.11,
+      "vwap": 248.86,
+      "range_pct": 71.4
+    },
+    "LTTS": {
+      "score": 41.7,
+      "ltp": 4200.0,
+      "chg_pct": 2.8,
+      "vwap": 4204.23,
+      "range_pct": 54.2
+    },
+    "LUPIN": {
+      "score": 58.2,
+      "ltp": 2003.1,
+      "chg_pct": 2.44,
+      "vwap": 1996.86,
+      "range_pct": 70.6
+    },
+    "M&M": {
+      "score": 78.8,
+      "ltp": 2901.0,
+      "chg_pct": 2.25,
+      "vwap": 2880.99,
+      "range_pct": 88.3
+    }
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "open_positions": {
+    "BEL": {
+      "entry_price": 379.20001220703125,
+      "initial_sl": 341.28001098632814,
+      "peak_price": 380.3500061035156,
+      "entry_time": "2026-11-03 14:48:55"
+    },
+    "BERGEPAINT": {
+      "entry_price": 480.0,
+      "initial_sl": 432.0,
+      "peak_price": 481.3500061035156,
+      "entry_time": "2026-11-03 14:49:58"
+    },
+    "BRITANNIA": {
+      "entry_price": 4893.0,
+      "initial_sl": 4403.7,
+      "peak_price": 4914.0,
+      "entry_time": "2026-11-03 15:06:23"
+    },
+    "BHARATFORG": {
+      "entry_price": 1777.300048828125,
+      "initial_sl": 1599.5700439453126,
+      "peak_price": 1777.300048828125,
+      "entry_time": "2026-11-03 15:29:59"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "BATAINDIA",
+      "entry_price": 651.0999755859375,
+      "exit_price": 644.9000244140625,
+      "pnl_pct": -0.9522272161499536,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:28:57"
+    }
+  ],
+  "latest_scores": {
+    "BATAINDIA": {
+      "score": -15.6,
+      "ltp": 647.45,
+      "chg_pct": -0.28,
+      "vwap": 648.58,
+      "range_pct": 45.4
+    },
+    "BEL": {
+      "score": 96.6,
+      "ltp": 380.1,
+      "chg_pct": 4.49,
+      "vwap": 371.45,
+      "range_pct": 87.9
+    },
+    "BERGEPAINT": {
+      "score": 77.1,
+      "ltp": 479.95,
+      "chg_pct": 4.2,
+      "vwap": 468.44,
+      "range_pct": 89.9
+    },
+    "BHARATFORG": {
+      "score": 78.5,
+      "ltp": 1777.3,
+      "chg_pct": 0.77,
+      "vwap": 1745.72,
+      "range_pct": 93.0
+    },
+    "BHARTIARTL": {
+      "score": 94.7,
+      "ltp": 2052.0,
+      "chg_pct": 5.16,
+      "vwap": 1992.19,
+      "range_pct": 81.3
+    },
+    "BHEL": {
+      "score": -11.2,
+      "ltp": 399.85,
+      "chg_pct": -0.12,
+      "vwap": 398.25,
+      "range_pct": 59.9
+    },
+    "BIOCON": {
+      "score": 40.1,
+      "ltp": 343.3,
+      "chg_pct": 3.16,
+      "vwap": 348.66,
+      "range_pct": 46.0
+    },
+    "BOSCHLTD": {
+      "score": 76.7,
+      "ltp": 49850.0,
+      "chg_pct": 9.12,
+      "vwap": 48278.64,
+      "range_pct": 88.3
+    },
+    "BPCL": {
+      "score": 77.2,
+      "ltp": 295.0,
+      "chg_pct": 1.29,
+      "vwap": 290.48,
+      "range_pct": 66.9
+    },
+    "BRITANNIA": {
+      "score": 79.7,
+      "ltp": 4909.9,
+      "chg_pct": 8.94,
+      "vwap": 4685.03,
+      "range_pct": 99.0
+    }
+  }
+}

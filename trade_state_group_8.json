@@ -1,0 +1,103 @@
+{
+  "open_positions": {
+    "GODREJPROP": {
+      "entry_price": 1669.699951171875,
+      "initial_sl": 1502.7299560546876,
+      "peak_price": 1670.5999755859375,
+      "entry_time": "2026-11-03 15:08:15"
+    },
+    "GODREJCP": {
+      "entry_price": 829.9500122070312,
+      "initial_sl": 746.9550109863281,
+      "peak_price": 830.0,
+      "entry_time": "2026-11-03 15:15:24"
+    },
+    "HCLTECH": {
+      "entry_price": 1439.0999755859375,
+      "initial_sl": 1295.1899780273438,
+      "peak_price": 1439.0999755859375,
+      "entry_time": "2026-11-03 15:29:43"
+    },
+    "HDFCAMC": {
+      "entry_price": 2440.0,
+      "initial_sl": 2196.0,
+      "peak_price": 2440.0,
+      "entry_time": "2026-11-03 15:29:43"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "HDFCBANK",
+      "entry_price": 723.9500122070312,
+      "exit_price": 722.2999877929688,
+      "pnl_pct": -0.22791966105950354,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:04:09"
+    }
+  ],
+  "latest_scores": {
+    "GODREJCP": {
+      "score": 62.3,
+      "ltp": 830.0,
+      "chg_pct": 0.43,
+      "vwap": 811.25,
+      "range_pct": 79.1
+    },
+    "GODREJPROP": {
+      "score": 91.4,
+      "ltp": 1669.0,
+      "chg_pct": 6.16,
+      "vwap": 1606.47,
+      "range_pct": 95.5
+    },
+    "GRANULES": {
+      "score": -89.9,
+      "ltp": 795.4,
+      "chg_pct": -4.35,
+      "vwap": 821.26,
+      "range_pct": 12.4
+    },
+    "GRASIM": {
+      "score": 81.0,
+      "ltp": 3087.0,
+      "chg_pct": 6.8,
+      "vwap": 2988.84,
+      "range_pct": 87.8
+    },
+    "HAL": {
+      "score": 81.5,
+      "ltp": 4938.0,
+      "chg_pct": 3.53,
+      "vwap": 4854.97,
+      "range_pct": 84.0
+    },
+    "HAVELLS": {
+      "score": 84.0,
+      "ltp": 1048.8,
+      "chg_pct": 4.67,
+      "vwap": 1022.64,
+      "range_pct": 90.2
+    },
+    "HCLTECH": {
+      "score": 88.9,
+      "ltp": 1439.1,
+      "chg_pct": 5.3,
+      "vwap": 1423.3,
+      "range_pct": 81.5
+    },
+    "HDFCAMC": {
+      "score": 87.5,
+      "ltp": 2440.0,
+      "chg_pct": 7.35,
+      "vwap": 2352.92,
+      "range_pct": 97.5
+    },
+    "HDFCBANK": {
+      "score": 99.9,
+      "ltp": 725.5,
+      "chg_pct": 8.11,
+      "vwap": 696.01,
+      "range_pct": 99.6
+    }
+  }
+}

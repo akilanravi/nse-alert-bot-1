@@ -1,0 +1,104 @@
+{
+  "open_positions": {
+    "KOTAKBANK": {
+      "entry_price": 461.29998779296875,
+      "initial_sl": 415.1699890136719,
+      "peak_price": 464.6499938964844,
+      "entry_time": "2026-11-03 14:47:13"
+    },
+    "ITC": {
+      "entry_price": 269.54998779296875,
+      "initial_sl": 242.5949890136719,
+      "peak_price": 273.8999938964844,
+      "entry_time": "2026-11-03 14:53:27"
+    },
+    "IOC": {
+      "entry_price": 138.6699981689453,
+      "initial_sl": 124.80299835205078,
+      "peak_price": 138.6699981689453,
+      "entry_time": "2026-11-03 15:29:47"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "JKCEMENT",
+      "entry_price": 5075.2998046875,
+      "exit_price": 5080.2001953125,
+      "pnl_pct": 0.09655371728925342,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:20:26"
+    }
+  ],
+  "latest_scores": {
+    "IOC": {
+      "score": 99.4,
+      "ltp": 138.67,
+      "chg_pct": 6.64,
+      "vwap": 133.05,
+      "range_pct": 97.8
+    },
+    "IPCALAB": {
+      "score": -27.1,
+      "ltp": 1951.0,
+      "chg_pct": -1.23,
+      "vwap": 1946.39,
+      "range_pct": 46.3
+    },
+    "IRCTC": {
+      "score": 48.4,
+      "ltp": 447.95,
+      "chg_pct": 1.05,
+      "vwap": 444.92,
+      "range_pct": 69.6
+    },
+    "ITC": {
+      "score": 100.0,
+      "ltp": 273.9,
+      "chg_pct": 7.75,
+      "vwap": 264.63,
+      "range_pct": 100.0
+    },
+    "JINDALSTEL": {
+      "score": 97.3,
+      "ltp": 1105.0,
+      "chg_pct": 5.44,
+      "vwap": 1084.02,
+      "range_pct": 90.6
+    },
+    "JKCEMENT": {
+      "score": 75.2,
+      "ltp": 5052.0,
+      "chg_pct": 4.64,
+      "vwap": 4944.07,
+      "range_pct": 83.0
+    },
+    "JSWSTEEL": {
+      "score": 99.3,
+      "ltp": 1320.0,
+      "chg_pct": 6.37,
+      "vwap": 1276.4,
+      "range_pct": 97.5
+    },
+    "JUBLFOOD": {
+      "score": -26.2,
+      "ltp": 422.0,
+      "chg_pct": -0.04,
+      "vwap": 423.14,
+      "range_pct": 42.1
+    },
+    "KALYANKJIL": {
+      "score": 54.4,
+      "ltp": 508.2,
+      "chg_pct": 2.2,
+      "vwap": 509.22,
+      "range_pct": 50.5
+    },
+    "KOTAKBANK": {
+      "score": 98.7,
+      "ltp": 464.65,
+      "chg_pct": 5.34,
+      "vwap": 455.67,
+      "range_pct": 95.5
+    }
+  }
+}

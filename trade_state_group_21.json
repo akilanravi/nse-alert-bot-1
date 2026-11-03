@@ -1,0 +1,34 @@
+{
+  "open_positions": {},
+  "closed_trades": {},
+  "latest_scores": {
+    "SJVN": {
+      "score": 66.2,
+      "ltp": 55.59,
+      "chg_pct": 10.67,
+      "vwap": 55.63,
+      "range_pct": 63.1
+    },
+    "IRFC": {
+      "score": 80.6,
+      "ltp": 75.72,
+      "chg_pct": 3.05,
+      "vwap": 75.06,
+      "range_pct": 63.7
+    },
+    "RVNL": {
+      "score": 38.5,
+      "ltp": 184.23,
+      "chg_pct": 1.78,
+      "vwap": 185.76,
+      "range_pct": 38.6
+    },
+    "HUDCO": {
+      "score": 33.6,
+      "ltp": 144.94,
+      "chg_pct": 1.21,
+      "vwap": 146.13,
+      "range_pct": 36.8
+    }
+  }
+}

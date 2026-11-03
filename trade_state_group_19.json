@@ -1,0 +1,116 @@
+{
+  "open_positions": {
+    "ULTRACEMCO": {
+      "entry_price": 11639.0,
+      "initial_sl": 10475.1,
+      "peak_price": 11700.0,
+      "entry_time": "2026-11-03 14:39:40"
+    },
+    "TVSMOTOR": {
+      "entry_price": 4285.2001953125,
+      "initial_sl": 3856.68017578125,
+      "peak_price": 4303.2001953125,
+      "entry_time": "2026-11-03 15:14:25"
+    },
+    "UPL": {
+      "entry_price": 517.8499755859375,
+      "initial_sl": 466.0649780273438,
+      "peak_price": 517.8499755859375,
+      "entry_time": "2026-11-03 15:29:46"
+    },
+    "VOLTAS": {
+      "entry_price": 1046.0,
+      "initial_sl": 941.4,
+      "peak_price": 1046.0,
+      "entry_time": "2026-11-03 15:29:46"
+    },
+    "WIPRO": {
+      "entry_price": 198.0,
+      "initial_sl": 178.20000000000002,
+      "peak_price": 198.0,
+      "entry_time": "2026-11-03 15:29:46"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "ZYDUSLIFE",
+      "entry_price": 1244.5999755859375,
+      "exit_price": 1242.4000244140625,
+      "pnl_pct": -0.1767596991024605,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:15:27"
+    }
+  ],
+  "latest_scores": {
+    "TVSMOTOR": {
+      "score": 93.8,
+      "ltp": 4303.2,
+      "chg_pct": 4.65,
+      "vwap": 4229.71,
+      "range_pct": 95.8
+    },
+    "UBL": {
+      "score": -89.0,
+      "ltp": 1190.0,
+      "chg_pct": -8.87,
+      "vwap": 1236.56,
+      "range_pct": 21.5
+    },
+    "ULTRACEMCO": {
+      "score": 80.0,
+      "ltp": 11700.0,
+      "chg_pct": 5.74,
+      "vwap": 11298.42,
+      "range_pct": 100.0
+    },
+    "UNIONBANK": {
+      "score": 23.2,
+      "ltp": 183.2,
+      "chg_pct": 0.78,
+      "vwap": 185.42,
+      "range_pct": 32.1
+    },
+    "UPL": {
+      "score": 26.2,
+      "ltp": 517.85,
+      "chg_pct": 0.95,
+      "vwap": 523.27,
+      "range_pct": 29.5
+    },
+    "VBL": {
+      "score": 44.7,
+      "ltp": 408.15,
+      "chg_pct": 0.23,
+      "vwap": 402.88,
+      "range_pct": 68.4
+    },
+    "VEDL": {
+      "score": 98.4,
+      "ltp": 246.9,
+      "chg_pct": 8.05,
+      "vwap": 238.84,
+      "range_pct": 94.5
+    },
+    "VOLTAS": {
+      "score": 99.4,
+      "ltp": 1046.0,
+      "chg_pct": 11.15,
+      "vwap": 1014.93,
+      "range_pct": 97.8
+    },
+    "WIPRO": {
+      "score": 96.9,
+      "ltp": 198.0,
+      "chg_pct": 8.1,
+      "vwap": 192.61,
+      "range_pct": 89.0
+    },
+    "ZYDUSLIFE": {
+      "score": 91.4,
+      "ltp": 1240.6,
+      "chg_pct": 6.67,
+      "vwap": 1226.23,
+      "range_pct": 86.7
+    }
+  }
+}

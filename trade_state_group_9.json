@@ -1,0 +1,85 @@
+{
+  "open_positions": {
+    "HINDUNILVR": {
+      "entry_price": 1951.9000244140625,
+      "initial_sl": 1756.7100219726562,
+      "peak_price": 1953.0,
+      "entry_time": "2026-11-03 15:14:18"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "ICICIGI",
+      "entry_price": 1582.800048828125,
+      "exit_price": 1586.300048828125,
+      "pnl_pct": 0.2211271096808048,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:15:20"
+    }
+  ],
+  "latest_scores": {
+    "HDFCLIFE": {
+      "score": 72.3,
+      "ltp": 523.0,
+      "chg_pct": 2.28,
+      "vwap": 519.82,
+      "range_pct": 68.9
+    },
+    "HEROMOTOCO": {
+      "score": 62.3,
+      "ltp": 5313.0,
+      "chg_pct": 0.83,
+      "vwap": 5206.8,
+      "range_pct": 72.7
+    },
+    "HINDALCO": {
+      "score": 87.2,
+      "ltp": 911.9,
+      "chg_pct": 1.79,
+      "vwap": 895.74,
+      "range_pct": 88.4
+    },
+    "HINDCOPPER": {
+      "score": -84.7,
+      "ltp": 400.35,
+      "chg_pct": -1.63,
+      "vwap": 406.47,
+      "range_pct": 16.1
+    },
+    "HINDPETRO": {
+      "score": 87.2,
+      "ltp": 352.9,
+      "chg_pct": 2.62,
+      "vwap": 346.41,
+      "range_pct": 65.2
+    },
+    "HINDUNILVR": {
+      "score": 99.9,
+      "ltp": 1953.0,
+      "chg_pct": 8.45,
+      "vwap": 1853.06,
+      "range_pct": 99.6
+    },
+    "ICICIBANK": {
+      "score": 97.5,
+      "ltp": 1425.0,
+      "chg_pct": 3.73,
+      "vwap": 1393.54,
+      "range_pct": 91.1
+    },
+    "ICICIGI": {
+      "score": 64.2,
+      "ltp": 1586.3,
+      "chg_pct": 1.21,
+      "vwap": 1568.2,
+      "range_pct": 96.8
+    },
+    "IDEA": {
+      "score": 79.1,
+      "ltp": 12.25,
+      "chg_pct": 1.41,
+      "vwap": 12.07,
+      "range_pct": 71.8
+    }
+  }
+}

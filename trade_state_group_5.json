@@ -1,0 +1,98 @@
+{
+  "open_positions": {
+    "CIPLA": {
+      "entry_price": 1387.0999755859375,
+      "initial_sl": 1248.389978027344,
+      "peak_price": 1392.0,
+      "entry_time": "2026-11-03 15:09:40"
+    },
+    "CANFINHOME": {
+      "entry_price": 737.7000122070312,
+      "initial_sl": 663.9300109863282,
+      "peak_price": 737.8499755859375,
+      "entry_time": "2026-11-03 15:13:48"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "CHAMBLFERT",
+      "entry_price": 387.70001220703125,
+      "exit_price": 384.20001220703125,
+      "pnl_pct": -0.9027598374515926,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:02:26"
+    }
+  ],
+  "latest_scores": {
+    "BSOFT": {
+      "score": 39.4,
+      "ltp": 322.5,
+      "chg_pct": 7.48,
+      "vwap": 338.53,
+      "range_pct": 43.8
+    },
+    "CANBK": {
+      "score": 8.7,
+      "ltp": 117.44,
+      "chg_pct": 0.13,
+      "vwap": 118.65,
+      "range_pct": 22.0
+    },
+    "CANFINHOME": {
+      "score": 51.6,
+      "ltp": 736.1,
+      "chg_pct": 1.76,
+      "vwap": 729.64,
+      "range_pct": 66.2
+    },
+    "CHAMBLFERT": {
+      "score": 81.1,
+      "ltp": 383.85,
+      "chg_pct": 7.33,
+      "vwap": 369.42,
+      "range_pct": 88.5
+    },
+    "CHOLAFIN": {
+      "score": 97.3,
+      "ltp": 1648.7,
+      "chg_pct": 12.62,
+      "vwap": 1586.51,
+      "range_pct": 90.3
+    },
+    "CIPLA": {
+      "score": 99.0,
+      "ltp": 1392.0,
+      "chg_pct": 3.53,
+      "vwap": 1372.36,
+      "range_pct": 100.0
+    },
+    "COALINDIA": {
+      "score": 98.8,
+      "ltp": 407.75,
+      "chg_pct": 3.18,
+      "vwap": 396.45,
+      "range_pct": 95.8
+    },
+    "COFORGE": {
+      "score": 91.9,
+      "ltp": 2062.3,
+      "chg_pct": 8.03,
+      "vwap": 2033.8,
+      "range_pct": 76.4
+    },
+    "COLPAL": {
+      "score": 70.2,
+      "ltp": 1626.7,
+      "chg_pct": 1.71,
+      "vwap": 1603.35,
+      "range_pct": 81.9
+    },
+    "CONCOR": {
+      "score": 42.9,
+      "ltp": 420.85,
+      "chg_pct": 1.57,
+      "vwap": 422.29,
+      "range_pct": 34.8
+    }
+  }
+}

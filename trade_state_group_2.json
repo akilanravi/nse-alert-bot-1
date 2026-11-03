@@ -1,0 +1,98 @@
+{
+  "open_positions": {
+    "APOLLOTYRE": {
+      "entry_price": 396.3999938964844,
+      "initial_sl": 356.75999450683594,
+      "peak_price": 397.95001220703125,
+      "entry_time": "2026-11-03 15:02:27"
+    },
+    "APOLLOHOSP": {
+      "entry_price": 8440.0,
+      "initial_sl": 7596.0,
+      "peak_price": 8444.0,
+      "entry_time": "2026-11-03 15:14:48"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "ATUL",
+      "entry_price": 5154.5,
+      "exit_price": 5116.5,
+      "pnl_pct": -0.7372199049374333,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 14:42:53"
+    }
+  ],
+  "latest_scores": {
+    "ADANIENT": {
+      "score": 92.1,
+      "ltp": 2588.0,
+      "chg_pct": 5.04,
+      "vwap": 2551.39,
+      "range_pct": 75.5
+    },
+    "ADANIPORTS": {
+      "score": 93.1,
+      "ltp": 1856.8,
+      "chg_pct": 6.6,
+      "vwap": 1834.12,
+      "range_pct": 89.3
+    },
+    "ALKEM": {
+      "score": 74.5,
+      "ltp": 5203.5,
+      "chg_pct": 3.11,
+      "vwap": 5110.93,
+      "range_pct": 80.6
+    },
+    "AMBUJACEM": {
+      "score": 92.7,
+      "ltp": 368.0,
+      "chg_pct": 3.07,
+      "vwap": 356.29,
+      "range_pct": 74.2
+    },
+    "APOLLOHOSP": {
+      "score": 84.0,
+      "ltp": 8444.0,
+      "chg_pct": 8.29,
+      "vwap": 8242.39,
+      "range_pct": 98.0
+    },
+    "APOLLOTYRE": {
+      "score": 76.6,
+      "ltp": 396.75,
+      "chg_pct": 3.93,
+      "vwap": 388.15,
+      "range_pct": 87.8
+    },
+    "ASHOKLEY": {
+      "score": 93.3,
+      "ltp": 152.6,
+      "chg_pct": 7.11,
+      "vwap": 148.5,
+      "range_pct": 76.2
+    },
+    "ASIANPAINT": {
+      "score": 97.1,
+      "ltp": 2420.5,
+      "chg_pct": 7.92,
+      "vwap": 2323.52,
+      "range_pct": 89.7
+    },
+    "ASTRAL": {
+      "score": 72.2,
+      "ltp": 1385.6,
+      "chg_pct": 2.52,
+      "vwap": 1356.74,
+      "range_pct": 85.6
+    },
+    "ATUL": {
+      "score": -65.1,
+      "ltp": 5067.0,
+      "chg_pct": -5.6,
+      "vwap": 5108.58,
+      "range_pct": 16.7
+    }
+  }
+}

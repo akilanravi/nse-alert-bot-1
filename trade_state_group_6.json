@@ -1,0 +1,110 @@
+{
+  "open_positions": {
+    "DIVISLAB": {
+      "entry_price": 9985.0,
+      "initial_sl": 8986.5,
+      "peak_price": 10035.0,
+      "entry_time": "2026-11-03 14:37:40"
+    },
+    "DIXON": {
+      "entry_price": 12191.0,
+      "initial_sl": 10971.9,
+      "peak_price": 12219.0,
+      "entry_time": "2026-11-03 15:11:39"
+    },
+    "COROMANDEL": {
+      "entry_price": 1794.699951171875,
+      "initial_sl": 1615.2299560546876,
+      "peak_price": 1795.0,
+      "entry_time": "2026-11-03 15:14:45"
+    },
+    "DABUR": {
+      "entry_price": 380.6499938964844,
+      "initial_sl": 342.5849945068359,
+      "peak_price": 380.8500061035156,
+      "entry_time": "2026-11-03 15:14:45"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "DALBHARAT",
+      "entry_price": 1383.9000244140625,
+      "exit_price": 1373.0,
+      "pnl_pct": -0.7876309142112723,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:29:11"
+    }
+  ],
+  "latest_scores": {
+    "COROMANDEL": {
+      "score": 79.8,
+      "ltp": 1795.0,
+      "chg_pct": 3.29,
+      "vwap": 1720.58,
+      "range_pct": 99.3
+    },
+    "CROMPTON": {
+      "score": 25.7,
+      "ltp": 196.82,
+      "chg_pct": 0.51,
+      "vwap": 198.82,
+      "range_pct": 38.4
+    },
+    "CUB": {
+      "score": -99.2,
+      "ltp": 207.28,
+      "chg_pct": -3.96,
+      "vwap": 218.92,
+      "range_pct": 3.0
+    },
+    "CUMMINSIND": {
+      "score": 48.7,
+      "ltp": 4609.9,
+      "chg_pct": 0.32,
+      "vwap": 4528.04,
+      "range_pct": 81.1
+    },
+    "DABUR": {
+      "score": 97.6,
+      "ltp": 380.85,
+      "chg_pct": 6.13,
+      "vwap": 368.61,
+      "range_pct": 91.6
+    },
+    "DALBHARAT": {
+      "score": -79.0,
+      "ltp": 1373.0,
+      "chg_pct": -8.64,
+      "vwap": 1394.09,
+      "range_pct": 27.4
+    },
+    "DEEPAKNTR": {
+      "score": 47.2,
+      "ltp": 1520.8,
+      "chg_pct": 5.79,
+      "vwap": 1536.03,
+      "range_pct": 49.6
+    },
+    "DELHIVERY": {
+      "score": 74.6,
+      "ltp": 411.4,
+      "chg_pct": 8.49,
+      "vwap": 410.25,
+      "range_pct": 74.4
+    },
+    "DIVISLAB": {
+      "score": 88.0,
+      "ltp": 10021.0,
+      "chg_pct": 6.38,
+      "vwap": 9797.7,
+      "range_pct": 97.9
+    },
+    "DIXON": {
+      "score": 81.5,
+      "ltp": 12187.0,
+      "chg_pct": 9.0,
+      "vwap": 11872.78,
+      "range_pct": 80.2
+    }
+  }
+}

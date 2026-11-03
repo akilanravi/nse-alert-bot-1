@@ -1,0 +1,95 @@
+{
+  "open_positions": {
+    "SHREECEM": {
+      "entry_price": 23815.0,
+      "initial_sl": 21433.5,
+      "peak_price": 23980.0,
+      "entry_time": "2026-11-03 14:49:10"
+    },
+    "SUNPHARMA": {
+      "entry_price": 1776.300048828125,
+      "initial_sl": 1598.6700439453125,
+      "peak_price": 1777.5999755859375,
+      "entry_time": "2026-11-03 15:09:50"
+    },
+    "SRF": {
+      "entry_price": 2416.39990234375,
+      "initial_sl": 2174.759912109375,
+      "peak_price": 2420.0,
+      "entry_time": "2026-11-03 15:12:57"
+    }
+  },
+  "closed_trades": {},
+  "latest_scores": {
+    "SBIN": {
+      "score": 43.9,
+      "ltp": 969.8,
+      "chg_pct": 1.83,
+      "vwap": 974.94,
+      "range_pct": 40.9
+    },
+    "SHREECEM": {
+      "score": 75.5,
+      "ltp": 23980.0,
+      "chg_pct": 3.59,
+      "vwap": 23412.17,
+      "range_pct": 84.0
+    },
+    "SHRIRAMFIN": {
+      "score": 96.3,
+      "ltp": 882.0,
+      "chg_pct": 7.9,
+      "vwap": 849.51,
+      "range_pct": 86.9
+    },
+    "SIEMENS": {
+      "score": 49.4,
+      "ltp": 3393.0,
+      "chg_pct": 0.98,
+      "vwap": 3358.47,
+      "range_pct": 72.7
+    },
+    "SRF": {
+      "score": 77.9,
+      "ltp": 2417.9,
+      "chg_pct": 4.03,
+      "vwap": 2355.8,
+      "range_pct": 92.7
+    },
+    "SUNPHARMA": {
+      "score": 51.2,
+      "ltp": 1776.4,
+      "chg_pct": 2.12,
+      "vwap": 1779.29,
+      "range_pct": 39.6
+    },
+    "SUNTV": {
+      "score": -81.9,
+      "ltp": 588.7,
+      "chg_pct": -3.65,
+      "vwap": 611.32,
+      "range_pct": 8.7
+    },
+    "SYNGENE": {
+      "score": 79.4,
+      "ltp": 406.0,
+      "chg_pct": 6.58,
+      "vwap": 403.3,
+      "range_pct": 71.1
+    },
+    "TATACHEM": {
+      "score": 64.2,
+      "ltp": 609.95,
+      "chg_pct": 2.05,
+      "vwap": 604.74,
+      "range_pct": 75.4
+    },
+    "TATACOMM": {
+      "score": 78.8,
+      "ltp": 1767.9,
+      "chg_pct": 3.96,
+      "vwap": 1719.88,
+      "range_pct": 95.8
+    }
+  }
+}

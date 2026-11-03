@@ -1,0 +1,85 @@
+{
+  "open_positions": {},
+  "closed_trades": [
+    {
+      "symbol": "ABBOTINDIA",
+      "entry_price": 25935.0,
+      "exit_price": 25755.0,
+      "pnl_pct": -0.6940427993059572,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:17:52"
+    }
+  ],
+  "latest_scores": {
+    "^NSEI": {
+      "score": 79.7,
+      "ltp": 23731.85,
+      "chg_pct": 5.12,
+      "vwap": 0.0,
+      "range_pct": 98.9
+    },
+    "^NSEBANK": {
+      "score": 75.8,
+      "ltp": 55454.3,
+      "chg_pct": 2.94,
+      "vwap": 0.0,
+      "range_pct": 86.7
+    },
+    "NIFTY_FIN_SERVICE": {
+      "score": 77.7,
+      "ltp": 25305.05,
+      "chg_pct": 4.57,
+      "vwap": 0.0,
+      "range_pct": 92.0
+    },
+    "NIFTY_MID_SELECT": {
+      "score": 73.7,
+      "ltp": 13531.4,
+      "chg_pct": 2.41,
+      "vwap": 0.0,
+      "range_pct": 94.1
+    },
+    "AARTIIND": {
+      "score": 30.4,
+      "ltp": 439.5,
+      "chg_pct": 1.36,
+      "vwap": 444.43,
+      "range_pct": 36.8
+    },
+    "ABB": {
+      "score": 23.0,
+      "ltp": 6580.5,
+      "chg_pct": -0.05,
+      "vwap": 6520.71,
+      "range_pct": 83.2
+    },
+    "ABBOTINDIA": {
+      "score": 18.5,
+      "ltp": 25800.0,
+      "chg_pct": 1.42,
+      "vwap": 25961.43,
+      "range_pct": 38.3
+    },
+    "ABCAPITAL": {
+      "score": 94.7,
+      "ltp": 381.0,
+      "chg_pct": 8.36,
+      "vwap": 372.23,
+      "range_pct": 81.3
+    },
+    "ABFRL": {
+      "score": -60.9,
+      "ltp": 39.21,
+      "chg_pct": -0.68,
+      "vwap": 39.51,
+      "range_pct": 35.4
+    },
+    "ACC": {
+      "score": 46.1,
+      "ltp": 1167.0,
+      "chg_pct": 1.91,
+      "vwap": 1159.82,
+      "range_pct": 56.8
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "open_positions": {
+    "BAJAJ-AUTO": {
+      "entry_price": 10484.0,
+      "initial_sl": 9435.6,
+      "peak_price": 10501.0,
+      "entry_time": "2026-11-03 15:04:37"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "BALRAMCHIN",
+      "entry_price": 661.4500122070312,
+      "exit_price": 658.0,
+      "pnl_pct": -0.5215832101234296,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 14:38:46"
+    },
+    {
+      "symbol": "BALRAMCHIN",
+      "entry_price": 661.4000244140625,
+      "exit_price": 654.0999755859375,
+      "pnl_pct": -1.1037267249259854,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 14:57:23"
+    }
+  ],
+  "latest_scores": {
+    "AUBANK": {
+      "score": 68.0,
+      "ltp": 880.05,
+      "chg_pct": 2.86,
+      "vwap": 878.48,
+      "range_pct": 60.5
+    },
+    "AUROPHARMA": {
+      "score": 87.3,
+      "ltp": 1691.9,
+      "chg_pct": 4.53,
+      "vwap": 1667.97,
+      "range_pct": 93.7
+    },
+    "AXISBANK": {
+      "score": 70.7,
+      "ltp": 1230.8,
+      "chg_pct": 1.42,
+      "vwap": 1220.76,
+      "range_pct": 75.9
+    },
+    "BAJAJ-AUTO": {
+      "score": -27.2,
+      "ltp": 10496.0,
+      "chg_pct": -1.45,
+      "vwap": 10463.84,
+      "range_pct": 48.3
+    },
+    "BAJAJFINSV": {
+      "score": 94.9,
+      "ltp": 1713.0,
+      "chg_pct": 3.16,
+      "vwap": 1671.06,
+      "range_pct": 90.6
+    },
+    "BAJFINANCE": {
+      "score": 95.4,
+      "ltp": 966.0,
+      "chg_pct": 6.95,
+      "vwap": 942.23,
+      "range_pct": 83.5
+    },
+    "BALKRISIND": {
+      "score": 78.2,
+      "ltp": 2190.2,
+      "chg_pct": 3.39,
+      "vwap": 2125.9,
+      "range_pct": 93.5
+    },
+    "BALRAMCHIN": {
+      "score": 96.6,
+      "ltp": 655.6,
+      "chg_pct": 5.06,
+      "vwap": 641.37,
+      "range_pct": 87.8
+    },
+    "BANDHANBNK": {
+      "score": 55.0,
+      "ltp": 156.74,
+      "chg_pct": 2.9,
+      "vwap": 157.44,
+      "range_pct": 45.9
+    },
+    "BANKBARODA": {
+      "score": 81.0,
+      "ltp": 243.74,
+      "chg_pct": 4.85,
+      "vwap": 241.63,
+      "range_pct": 65.8
+    }
+  }
+}

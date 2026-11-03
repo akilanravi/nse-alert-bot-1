@@ -1,0 +1,101 @@
+{
+  "open_positions": {
+    "RELIANCE": {
+      "entry_price": 1292.800048828125,
+      "initial_sl": 1163.5200439453126,
+      "peak_price": 1307.9000244140625,
+      "entry_time": "2026-11-03 14:42:44"
+    },
+    "POONAWALLA": {
+      "entry_price": 475.0,
+      "initial_sl": 427.5,
+      "peak_price": 489.5,
+      "entry_time": "2026-11-03 14:45:49"
+    },
+    "SAIL": {
+      "entry_price": 167.5,
+      "initial_sl": 150.75,
+      "peak_price": 167.5,
+      "entry_time": "2026-11-03 15:29:52"
+    },
+    "SBILIFE": {
+      "entry_price": 1683.0,
+      "initial_sl": 1514.7,
+      "peak_price": 1683.0,
+      "entry_time": "2026-11-03 15:29:52"
+    }
+  },
+  "closed_trades": {},
+  "latest_scores": {
+    "POONAWALLA": {
+      "score": 93.5,
+      "ltp": 470.0,
+      "chg_pct": 16.6,
+      "vwap": 448.14,
+      "range_pct": 77.0
+    },
+    "POWERGRID": {
+      "score": 48.4,
+      "ltp": 259.55,
+      "chg_pct": 3.57,
+      "vwap": 262.24,
+      "range_pct": 50.6
+    },
+    "PVRINOX": {
+      "score": 95.0,
+      "ltp": 1522.0,
+      "chg_pct": 4.71,
+      "vwap": 1489.22,
+      "range_pct": 82.3
+    },
+    "RAMCOCEM": {
+      "score": 26.5,
+      "ltp": 745.0,
+      "chg_pct": 2.11,
+      "vwap": 749.58,
+      "range_pct": 46.6
+    },
+    "RBLBANK": {
+      "score": -45.8,
+      "ltp": 350.2,
+      "chg_pct": -0.04,
+      "vwap": 354.11,
+      "range_pct": 16.7
+    },
+    "RECLTD": {
+      "score": -65.2,
+      "ltp": 284.5,
+      "chg_pct": -0.45,
+      "vwap": 289.58,
+      "range_pct": 10.9
+    },
+    "RELIANCE": {
+      "score": 100.0,
+      "ltp": 1307.9,
+      "chg_pct": 10.13,
+      "vwap": 1234.05,
+      "range_pct": 100.0
+    },
+    "SAIL": {
+      "score": 66.1,
+      "ltp": 167.5,
+      "chg_pct": 0.78,
+      "vwap": 163.76,
+      "range_pct": 83.1
+    },
+    "SBICARD": {
+      "score": 72.0,
+      "ltp": 537.05,
+      "chg_pct": 2.81,
+      "vwap": 532.5,
+      "range_pct": 71.9
+    },
+    "SBILIFE": {
+      "score": 76.8,
+      "ltp": 1683.0,
+      "chg_pct": 1.17,
+      "vwap": 1663.14,
+      "range_pct": 84.9
+    }
+  }
+}

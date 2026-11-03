@@ -1,0 +1,100 @@
+{
+  "open_positions": {
+    "GLENMARK": {
+      "entry_price": 2376.0,
+      "initial_sl": 2138.4,
+      "peak_price": 2419.300048828125,
+      "entry_time": "2026-11-03 14:32:40"
+    },
+    "EICHERMOT": {
+      "entry_price": 7373.0,
+      "initial_sl": 6635.7,
+      "peak_price": 7385.0,
+      "entry_time": "2026-11-03 14:44:00"
+    },
+    "ESCORTS": {
+      "entry_price": 2441.800048828125,
+      "initial_sl": 2197.620043945313,
+      "peak_price": 2447.0,
+      "entry_time": "2026-11-03 14:46:04"
+    },
+    "EXIDEIND": {
+      "entry_price": 346.3999938964844,
+      "initial_sl": 311.75999450683594,
+      "peak_price": 346.8999938964844,
+      "entry_time": "2026-11-03 14:56:22"
+    },
+    "DRREDDY": {
+      "entry_price": 1357.5,
+      "initial_sl": 1221.75,
+      "peak_price": 1360.0,
+      "entry_time": "2026-11-03 14:58:26"
+    }
+  },
+  "closed_trades": {},
+  "latest_scores": {
+    "DLF": {
+      "score": 97.3,
+      "ltp": 706.0,
+      "chg_pct": 6.25,
+      "vwap": 690.64,
+      "range_pct": 90.3
+    },
+    "DRREDDY": {
+      "score": 93.1,
+      "ltp": 1360.0,
+      "chg_pct": 3.94,
+      "vwap": 1344.09,
+      "range_pct": 92.2
+    },
+    "EICHERMOT": {
+      "score": 80.0,
+      "ltp": 7385.0,
+      "chg_pct": 3.11,
+      "vwap": 7246.99,
+      "range_pct": 100.0
+    },
+    "ESCORTS": {
+      "score": -73.5,
+      "ltp": 2442.0,
+      "chg_pct": -7.11,
+      "vwap": 2476.98,
+      "range_pct": 18.4
+    },
+    "EXIDEIND": {
+      "score": 40.2,
+      "ltp": 346.3,
+      "chg_pct": 0.55,
+      "vwap": 347.04,
+      "range_pct": 46.7
+    },
+    "FEDERALBNK": {
+      "score": -95.4,
+      "ltp": 333.0,
+      "chg_pct": -4.01,
+      "vwap": 340.99,
+      "range_pct": 16.2
+    },
+    "GAIL": {
+      "score": 97.6,
+      "ltp": 180.55,
+      "chg_pct": 8.38,
+      "vwap": 172.89,
+      "range_pct": 91.5
+    },
+    "GLENMARK": {
+      "score": 86.8,
+      "ltp": 2407.5,
+      "chg_pct": 5.66,
+      "vwap": 2359.37,
+      "range_pct": 92.5
+    },
+    "GNFC": {
+      "score": -89.8,
+      "ltp": 463.5,
+      "chg_pct": -9.31,
+      "vwap": 487.69,
+      "range_pct": 2.2
+    }
+  }
+}

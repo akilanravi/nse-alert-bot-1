@@ -1,0 +1,104 @@
+{
+  "open_positions": {
+    "INFY": {
+      "entry_price": 1141.0,
+      "initial_sl": 1026.9,
+      "peak_price": 1141.9000244140625,
+      "entry_time": "2026-11-03 14:37:39"
+    },
+    "INDIAMART": {
+      "entry_price": 1542.0,
+      "initial_sl": 1387.8,
+      "peak_price": 1549.0,
+      "entry_time": "2026-11-03 15:20:53"
+    },
+    "INDIACEM": {
+      "entry_price": 318.54998779296875,
+      "initial_sl": 286.6949890136719,
+      "peak_price": 318.6000061035156,
+      "entry_time": "2026-11-03 15:29:08"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "INDHOTEL",
+      "entry_price": 829.4000244140625,
+      "exit_price": 831.4500122070312,
+      "pnl_pct": 0.24716514741086282,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:15:44"
+    }
+  ],
+  "latest_scores": {
+    "IDFCFIRSTB": {
+      "score": 56.9,
+      "ltp": 73.0,
+      "chg_pct": 1.29,
+      "vwap": 72.83,
+      "range_pct": 61.8
+    },
+    "IEX": {
+      "score": 95.4,
+      "ltp": 108.68,
+      "chg_pct": 6.42,
+      "vwap": 105.47,
+      "range_pct": 83.8
+    },
+    "IGL": {
+      "score": -70.9,
+      "ltp": 133.01,
+      "chg_pct": -5.73,
+      "vwap": 133.51,
+      "range_pct": 43.9
+    },
+    "INDHOTEL": {
+      "score": 98.2,
+      "ltp": 831.45,
+      "chg_pct": 3.36,
+      "vwap": 818.89,
+      "range_pct": 93.6
+    },
+    "INDIACEM": {
+      "score": 83.0,
+      "ltp": 318.55,
+      "chg_pct": 3.91,
+      "vwap": 309.81,
+      "range_pct": 79.9
+    },
+    "INDIAMART": {
+      "score": -22.7,
+      "ltp": 1549.0,
+      "chg_pct": -4.48,
+      "vwap": 1521.73,
+      "range_pct": 44.7
+    },
+    "INDIGO": {
+      "score": 84.9,
+      "ltp": 5000.5,
+      "chg_pct": 8.64,
+      "vwap": 4873.95,
+      "range_pct": 78.2
+    },
+    "INDUSINDBK": {
+      "score": 53.6,
+      "ltp": 850.9,
+      "chg_pct": 0.79,
+      "vwap": 847.5,
+      "range_pct": 55.0
+    },
+    "INDUSTOWER": {
+      "score": 82.5,
+      "ltp": 391.5,
+      "chg_pct": 1.75,
+      "vwap": 383.45,
+      "range_pct": 72.7
+    },
+    "INFY": {
+      "score": 52.8,
+      "ltp": 1140.0,
+      "chg_pct": 2.86,
+      "vwap": 1145.6,
+      "range_pct": 41.7
+    }
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "open_positions": {
+    "METROPOLIS": {
+      "entry_price": 568.0499877929688,
+      "initial_sl": 511.2449890136719,
+      "peak_price": 571.8499755859375,
+      "entry_time": "2026-11-03 14:40:53"
+    },
+    "MGL": {
+      "entry_price": 1059.0,
+      "initial_sl": 953.1,
+      "peak_price": 1073.0999755859375,
+      "entry_time": "2026-11-03 15:14:43"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "MARICO",
+      "entry_price": 868.7000122070312,
+      "exit_price": 868.5999755859375,
+      "pnl_pct": -0.011515669355131649,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:15:45"
+    },
+    {
+      "symbol": "M&MFIN",
+      "entry_price": 264.29998779296875,
+      "exit_price": 263.29998779296875,
+      "pnl_pct": -0.37835794407350454,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:24:59"
+    }
+  ],
+  "latest_scores": {
+    "M&MFIN": {
+      "score": 74.2,
+      "ltp": 263.3,
+      "chg_pct": 1.62,
+      "vwap": 260.6,
+      "range_pct": 71.2
+    },
+    "MANAPPURAM": {
+      "score": 94.9,
+      "ltp": 303.15,
+      "chg_pct": 5.87,
+      "vwap": 297.46,
+      "range_pct": 81.9
+    },
+    "MARICO": {
+      "score": 99.1,
+      "ltp": 868.6,
+      "chg_pct": 13.46,
+      "vwap": 831.37,
+      "range_pct": 96.9
+    },
+    "MARUTI": {
+      "score": 74.3,
+      "ltp": 11828.0,
+      "chg_pct": 2.67,
+      "vwap": 11544.42,
+      "range_pct": 88.8
+    },
+    "MCX": {
+      "score": 97.3,
+      "ltp": 3498.8,
+      "chg_pct": 11.28,
+      "vwap": 3315.32,
+      "range_pct": 90.4
+    },
+    "METROPOLIS": {
+      "score": 79.1,
+      "ltp": 570.95,
+      "chg_pct": 3.07,
+      "vwap": 558.53,
+      "range_pct": 96.9
+    },
+    "MFSL": {
+      "score": -78.0,
+      "ltp": 1190.0,
+      "chg_pct": -3.27,
+      "vwap": 1195.2,
+      "range_pct": 21.6
+    },
+    "MGL": {
+      "score": 57.2,
+      "ltp": 1060.9,
+      "chg_pct": 0.83,
+      "vwap": 1040.99,
+      "range_pct": 79.5
+    },
+    "MOTHERSON": {
+      "score": 64.1,
+      "ltp": 159.79,
+      "chg_pct": 1.81,
+      "vwap": 159.05,
+      "range_pct": 60.5
+    },
+    "MPHASIS": {
+      "score": 16.4,
+      "ltp": 2520.0,
+      "chg_pct": 1.83,
+      "vwap": 2538.48,
+      "range_pct": 47.8
+    }
+  }
+}

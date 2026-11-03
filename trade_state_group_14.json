@@ -1,0 +1,118 @@
+{
+  "open_positions": {
+    "NAUKRI": {
+      "entry_price": 1180.5999755859375,
+      "initial_sl": 1062.5399780273438,
+      "peak_price": 1182.0,
+      "entry_time": "2026-11-03 14:37:48"
+    },
+    "NTPC": {
+      "entry_price": 319.20001220703125,
+      "initial_sl": 287.28001098632814,
+      "peak_price": 320.3999938964844,
+      "entry_time": "2026-11-03 15:12:33"
+    },
+    "OFSS": {
+      "entry_price": 9883.5,
+      "initial_sl": 8895.15,
+      "peak_price": 9896.0,
+      "entry_time": "2026-11-03 15:12:33"
+    },
+    "NESTLEIND": {
+      "entry_price": 1238.5,
+      "initial_sl": 1114.65,
+      "peak_price": 1240.0,
+      "entry_time": "2026-11-03 15:13:37"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "NATIONALUM",
+      "entry_price": 319.25,
+      "exit_price": 316.8999938964844,
+      "pnl_pct": -0.73610214675509,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:12:33"
+    },
+    {
+      "symbol": "MRF",
+      "entry_price": 117860.0,
+      "exit_price": 117450.0,
+      "pnl_pct": -0.34787035465806887,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:29:59"
+    }
+  ],
+  "latest_scores": {
+    "MRF": {
+      "score": -21.8,
+      "ltp": 117450.0,
+      "chg_pct": -0.54,
+      "vwap": 117501.61,
+      "range_pct": 60.9
+    },
+    "MUTHOOTFIN": {
+      "score": 86.4,
+      "ltp": 2524.6,
+      "chg_pct": 5.26,
+      "vwap": 2479.85,
+      "range_pct": 80.6
+    },
+    "NATIONALUM": {
+      "score": 30.4,
+      "ltp": 317.7,
+      "chg_pct": 1.26,
+      "vwap": 321.29,
+      "range_pct": 39.9
+    },
+    "NAUKRI": {
+      "score": -63.4,
+      "ltp": 1182.0,
+      "chg_pct": -1.9,
+      "vwap": 1185.21,
+      "range_pct": 34.1
+    },
+    "NAVINFLUOR": {
+      "score": 46.7,
+      "ltp": 8530.0,
+      "chg_pct": 1.78,
+      "vwap": 8470.74,
+      "range_pct": 58.0
+    },
+    "NESTLEIND": {
+      "score": 98.7,
+      "ltp": 1236.1,
+      "chg_pct": 7.3,
+      "vwap": 1192.73,
+      "range_pct": 95.2
+    },
+    "NMDC": {
+      "score": 28.9,
+      "ltp": 67.71,
+      "chg_pct": 0.8,
+      "vwap": 67.78,
+      "range_pct": 35.8
+    },
+    "NTPC": {
+      "score": 92.5,
+      "ltp": 320.4,
+      "chg_pct": 6.45,
+      "vwap": 315.18,
+      "range_pct": 73.6
+    },
+    "OBEROIRLTY": {
+      "score": 73.8,
+      "ltp": 1670.0,
+      "chg_pct": 4.36,
+      "vwap": 1635.15,
+      "range_pct": 77.9
+    },
+    "OFSS": {
+      "score": 14.6,
+      "ltp": 9896.0,
+      "chg_pct": 1.55,
+      "vwap": 9969.99,
+      "range_pct": 26.8
+    }
+  }
+}

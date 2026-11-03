@@ -1,0 +1,91 @@
+{
+  "open_positions": {
+    "ONGC": {
+      "entry_price": 232.1699981689453,
+      "initial_sl": 208.9529983520508,
+      "peak_price": 232.1699981689453,
+      "entry_time": "2026-11-03 15:29:49"
+    },
+    "PIIND": {
+      "entry_price": 2185.0,
+      "initial_sl": 1966.5,
+      "peak_price": 2185.0,
+      "entry_time": "2026-11-03 15:29:49"
+    }
+  },
+  "closed_trades": [
+    {
+      "symbol": "PETRONET",
+      "entry_price": 303.29998779296875,
+      "exit_price": 303.25,
+      "pnl_pct": -0.01648130398306229,
+      "exit_reason": "Supertrend (7, 2) Bearish Reversal",
+      "time": "2026-11-03 15:13:26"
+    }
+  ],
+  "latest_scores": {
+    "ONGC": {
+      "score": 93.6,
+      "ltp": 232.17,
+      "chg_pct": 3.34,
+      "vwap": 228.53,
+      "range_pct": 77.4
+    },
+    "PAGEIND": {
+      "score": 74.4,
+      "ltp": 35280.0,
+      "chg_pct": 5.76,
+      "vwap": 34737.08,
+      "range_pct": 80.1
+    },
+    "PERSISTENT": {
+      "score": 84.5,
+      "ltp": 6097.0,
+      "chg_pct": 7.17,
+      "vwap": 5990.78,
+      "range_pct": 92.4
+    },
+    "PETRONET": {
+      "score": 95.9,
+      "ltp": 303.0,
+      "chg_pct": 5.21,
+      "vwap": 295.62,
+      "range_pct": 85.5
+    },
+    "PFC": {
+      "score": 49.4,
+      "ltp": 318.0,
+      "chg_pct": 1.27,
+      "vwap": 318.09,
+      "range_pct": 49.3
+    },
+    "PIDILITIND": {
+      "score": 97.4,
+      "ltp": 1510.9,
+      "chg_pct": 4.6,
+      "vwap": 1425.68,
+      "range_pct": 90.8
+    },
+    "PIIND": {
+      "score": 75.5,
+      "ltp": 2185.0,
+      "chg_pct": 5.0,
+      "vwap": 2134.03,
+      "range_pct": 84.2
+    },
+    "PNB": {
+      "score": 5.4,
+      "ltp": 120.97,
+      "chg_pct": 0.45,
+      "vwap": 122.59,
+      "range_pct": 26.3
+    },
+    "POLYCAB": {
+      "score": 43.2,
+      "ltp": 7837.0,
+      "chg_pct": 1.54,
+      "vwap": 7806.29,
+      "range_pct": 68.5
+    }
+  }
+}
