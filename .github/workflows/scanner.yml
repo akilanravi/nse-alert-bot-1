@@ -1,12 +1,11 @@
-
 name: 5M Parallel Telegram Alert Scanner
 
 on:
   schedule:
-    # 9:30 AM IST = 4:00 AM UTC
+    # 9:30 AM IST = 4:00 AM UTC (Mon-Fri) - Starts continuous scanning loop
     - cron: '0 4 * * 1-5'
-    # 5:05 PM IST = 11:35 AM UTC
-    - cron: '35 11 * * 1-5'
+    # 3:35 PM IST = 10:05 AM UTC (Mon-Fri) - Generates EOD Summary Report
+    - cron: '5 10 * * 1-5'
 
   workflow_dispatch:
     inputs:
@@ -36,17 +35,33 @@ jobs:
        inputs.action == 'scan')
 
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 380
 
     strategy:
       fail-fast: false
       matrix:
         group:
-          - indices_banking
-          - it_energy
-          - auto_metals
-          - pharma_fmcg
-          - telecom_infra_chem
+          - group_1
+          - group_2
+          - group_3
+          - group_4
+          - group_5
+          - group_6
+          - group_7
+          - group_8
+          - group_9
+          - group_10
+          - group_11
+          - group_12
+          - group_13
+          - group_14
+          - group_15
+          - group_16
+          - group_17
+          - group_18
+          - group_19
+          - group_20
+          - group_21
 
     steps:
       - name: Checkout repository
@@ -64,7 +79,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install yfinance pandas numpy pytz requests
 
-      - name: Run sector scanner
+      - name: Run continuous market scanner (09:30 - 15:30 IST)
         env:
           TELEGRAM_BOT_TOKEN_1: ${{ secrets.TELEGRAM_BOT_TOKEN_1 }}
           TELEGRAM_CHAT_ID_1: ${{ secrets.TELEGRAM_CHAT_ID_1 }}
@@ -122,21 +137,21 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add trade_state_*.json
+          git add trade_state_*.json || true
 
           if git diff --cached --quiet; then
             echo "No state changes to commit."
             exit 0
           fi
 
-          git commit -m "Update Yahoo scanner states [skip ci]"
+          git commit -m "Update scanner trade states [skip ci]"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
   daily-report:
     if: |
       (github.event_name == 'schedule' &&
-       github.event.schedule == '35 11 * * 1-5') ||
+       github.event.schedule == '5 10 * * 1-5') ||
       (github.event_name == 'workflow_dispatch' &&
        inputs.action == 'report')
 
@@ -155,7 +170,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas numpy pytz requests
+          pip install pandas requests pytz
 
       - name: Generate daily report
         env:
