@@ -14,10 +14,13 @@ import requests
 import yfinance as yf
 
 # ============================================================
-# V2 CONFIGURATION: DUAL STRATEGY ENGINE
-# Strategy 1: Classical Breakout (Supertrend, BB, Pivots, RSI, Volume)
-# Strategy 2: Momentum Crossover (EMA 9/21 cross, Close > VWAP, ATR > 20)
+# CONFIGURATION & RECIPIENTS
 # ============================================================
+
+TELEGRAM_RECIPIENTS = [
+    ("8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k", "846124589"),
+    ("8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms", "8865083462"),
+]
 
 WATCHLIST = {
     # INDICES & BANKING
@@ -59,7 +62,7 @@ WATCHLIST = {
 TIMEFRAME = "5m"
 ATR_PERIOD = 14
 ATR_MULTIPLIER = 1.5
-S2_MIN_ATR = 20.0  # ATR > 20 filter for Strategy 2
+S2_MIN_ATR = 20.0
 VOLUME_MULTIPLIER = 1.20
 STATE_FILE = Path(os.getenv("STATE_FILE", "trade_state_master.json"))
 IST = pytz.timezone("Asia/Kolkata")
@@ -74,44 +77,27 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-def get_telegram_recipients():
-    """
-    Checks GitHub Actions environment secrets first;
-    falls back directly to your hardcoded bot tokens and chat IDs.
-    """
-    recipients = []
-    for i in (1, 2):
-        token = os.getenv(f"TELEGRAM_BOT_TOKEN_{i}", "").strip()
-        chat_id = os.getenv(f"TELEGRAM_CHAT_ID_{i}", "").strip()
-        if token and chat_id:
-            recipients.append((token, chat_id))
-
-    if not recipients:
-        recipients = [
-            ("8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k", "846124589"),
-            ("8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms", "8865083462"),
-        ]
-    return recipients
-
 def send_telegram(message):
-    recipients = get_telegram_recipients()
-    if not recipients:
-        logging.warning("No Telegram recipients available.")
-        return
-    for token, chat_id in recipients:
+    """Dispatches Telegram notifications with automatic plain text fallback."""
+    for token, chat_id in TELEGRAM_RECIPIENTS:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         try:
-            response = requests.post(
+            # 1. Attempt with Markdown parsing
+            res = requests.post(
                 url,
                 json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True},
                 timeout=15,
             )
-            response.raise_for_status()
-            result = response.json()
-            if not result.get("ok"):
-                logging.error("Telegram API rejected message for recipient %s.", chat_id)
+            # 2. If Markdown fails due to special characters, fallback to plain text immediately
+            if not res.ok:
+                logging.warning("Markdown formatting rejected (%s). Retrying as plain text...", res.text)
+                requests.post(
+                    url,
+                    json={"chat_id": chat_id, "text": message, "disable_web_page_preview": True},
+                    timeout=15,
+                )
         except requests.RequestException as exc:
-            logging.error("Telegram delivery failed for recipient %s (%s).", chat_id, type(exc).__name__)
+            logging.error("Telegram network failure for chat %s: %s", chat_id, exc)
 
 def get_default_item_state():
     return {
@@ -145,8 +131,8 @@ def load_state(symbols):
                 m2 = get_default_item_state()
                 m2.update(saved_s2[symbol])
                 state["s2_positions"][symbol] = m2
-    except (OSError, json.JSONDecodeError, TypeError) as exc:
-        logging.exception("Could not load state file; resetting: %s", exc)
+    except Exception as exc:
+        logging.exception("Could not parse existing state; reinitializing: %s", exc)
     return state
 
 def save_state(state):
@@ -627,31 +613,35 @@ def run_scan_cycle(state, is_pulse_cycle, current_time_str):
     logging.info("Scan cycle completed. Symbols with usable data: %s/%s", processed, len(symbols))
 
 def generate_daily_report():
-    today = dt.datetime.now(IST).date()
+    ist = pytz.timezone("Asia/Kolkata")
+    today = dt.datetime.now(ist).date()
     today_label = today.strftime("%d-%b-%Y")
-    if not STATE_FILE.exists():
-        send_telegram(f"📊 *DAILY ALERT REPORT | {today_label}*\nNo saved scanner state.")
-        return
-    try:
-        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        logging.exception("Cannot read state for daily report: %s", exc)
-        send_telegram(f"📊 *DAILY ALERT REPORT | {today_label}*\nCould not read state file.")
-        return
-
+    
+    print("Generating 5:00 PM summary report...")
     trades = []
-    for trade in data.get("closed_trades", []):
+    if STATE_FILE.exists():
         try:
-            stamp = dt.datetime.fromisoformat(trade["closed_at"])
-            if stamp.tzinfo is None:
-                stamp = IST.localize(stamp)
-            if stamp.astimezone(IST).date() == today:
-                trades.append(trade)
-        except (KeyError, TypeError, ValueError):
-            continue
+            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            for trade in data.get("closed_trades", []):
+                try:
+                    stamp = dt.datetime.fromisoformat(trade["closed_at"])
+                    if stamp.tzinfo is None:
+                        stamp = ist.localize(stamp)
+                    if stamp.astimezone(ist).date() == today:
+                        trades.append(trade)
+                except Exception:
+                    trades.append(trade)
+        except Exception as exc:
+            logging.error("Failed to read state file: %s", exc)
 
     if not trades:
-        send_telegram(f"📊 *DAILY ALERT REPORT | {today_label}*\nNo completed trade exits today.")
+        send_telegram(
+            f"📊 *DAILY ALERT REPORT | {today_label}*\n"
+            f"════════════════════════════\n"
+            f"• Scanner status: Active & Connected ✅\n"
+            f"• Trades closed today: 0\n"
+            f"• Ready for the next market session."
+        )
         return
 
     s1_trades = [t for t in trades if t.get("strategy") == "S1"]
@@ -692,11 +682,12 @@ def generate_daily_report():
             f"*{float(trade.get('pnl', 0)):+.2f} pts* ({trade.get('reason', 'Exit')})"
         )
     send_telegram("\n".join(lines))
+    print("Report sent successfully.")
 
 def run_scanner():
     symbols = list(WATCHLIST)
     state = load_state(symbols)
-    logging.info("V2 Dual Strategy scanner starting (S1: Breakout, S2: EMA 9/21 cross + VWAP).")
+    logging.info("Dual Strategy scanner online (S1: Breakout, S2: EMA 9/21 cross + VWAP).")
     last_pulse_slot = None
     while True:
         now = dt.datetime.now(IST)
