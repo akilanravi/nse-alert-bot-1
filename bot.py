@@ -5,22 +5,40 @@ import time
 from datetime import datetime
 
 # ==============================================================================
-# 1. CONFIGURATION & TELEGRAM ALERTS
+# 1. CONFIGURATION & TELEGRAM ALERTS (DUAL-CHANNEL BROADCAST)
 # ==============================================================================
-TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"
+# Credentials retrieved from your conversation records:
+TELEGRAM_BOT_CONFIGS = [
+    {
+        "token": "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms",
+        "chat_id": "8865083462"
+    },
+    {
+        "token": "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k",
+        "chat_id": "846124589"
+    }
+]
 
 def send_telegram_alert(message: str):
-    """Dispatches real-time entry and exit signals to Telegram."""
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
-        print(f"[ALERT] {message}")
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    try:
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Error dispatching Telegram alert: {e}")
+    """Dispatches real-time entry and exit signals to configured Telegram channels."""
+    for config in TELEGRAM_BOT_CONFIGS:
+        token = config.get("token")
+        chat_id = config.get("chat_id")
+        if not token or not chat_id:
+            continue
+            
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        try:
+            response = requests.post(url, json=payload, timeout=5)
+            if response.status_code != 200:
+                print(f"[ERROR] Failed to send Telegram alert to {chat_id}: {response.text}")
+        except Exception as e:
+            print(f"[EXCEPTION] Telegram dispatch error for chat {chat_id}: {e}")
 
 # ==============================================================================
 # 2. 210 F&O STOCKS & INDICES (CHUNKED INTO BATCHES OF 10)
@@ -28,7 +46,7 @@ def send_telegram_alert(message: str):
 ALL_FO_SYMBOLS = [
     # Indices
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
-    # F&O Stocks (Expanded list up to 210 symbols)
+    # F&O Stocks
     "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS", "ALKEM", "AMBUJACEM",
     "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "ASTRAL", "ATUL", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO",
     "BAJAJFINSV", "BAJFINANCE", "BALKRISIND", "BALRAMCHIN", "BANDHANBNK", "BANKBARODA", "BATAINDIA", "BEL", "BERGEPAINT", "BHARATFORG",
@@ -60,7 +78,7 @@ SYMBOL_GROUPS = chunk_symbols(ALL_FO_SYMBOLS, 10)
 # ==============================================================================
 # 3. TECHNICAL INDICATORS
 # ==============================================================================
-def compute_supertrend(df: pd.DataFrame, period: int, multiplier: float) -> pd.DataFrame:
+def compute_supertrend(df: pd.DataFrame, period: int, multiplier: float) -> pd.Series:
     """Computes Supertrend indicator given ATR period and multiplier."""
     high, low, close = df['high'], df['low'], df['close']
     tr1 = high - low
@@ -90,13 +108,13 @@ def compute_supertrend(df: pd.DataFrame, period: int, multiplier: float) -> pd.D
         else:
             final_lower.iloc[i] = final_lower.iloc[i-1]
 
-        # Trend Flip
+        # Trend Flip: 1 = Bullish, -1 = Bearish
         if trend.iloc[i-1] == 1:
             trend.iloc[i] = -1 if close.iloc[i] < final_lower.iloc[i] else 1
         else:
             trend.iloc[i] = 1 if close.iloc[i] > final_upper.iloc[i] else -1
 
-    return trend  # 1 = Bullish, -1 = Bearish
+    return trend
 
 def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
@@ -138,7 +156,7 @@ def process_trade_exits(symbol: str, current_bar: pd.Series, st_7_2_current: int
     close_price = current_bar['close']
     high_price = current_bar['high']
 
-    # Update Peak Price and 10% Trailing Stop Loss
+    # Update Peak Price and ratchet Trailing Stop Loss
     pos['peak_price'] = max(pos['peak_price'], high_price)
     trailing_sl = pos['peak_price'] * 0.90
     initial_sl = pos['initial_sl']
@@ -150,7 +168,7 @@ def process_trade_exits(symbol: str, current_bar: pd.Series, st_7_2_current: int
     # Check Stop Loss / Trailing Stop Loss
     if close_price <= effective_sl:
         exit_triggered = True
-        exit_reason = f"Trailing SL Hit at {close_price:.2f} (Active SL: {effective_sl:.2f})" if effective_sl == trailing_sl else f"Initial 10% SL Hit at {close_price:.2f}"
+        exit_reason = f"Trailing SL Hit at {close_price:.2f} (Trigger: {effective_sl:.2f})" if effective_sl == trailing_sl else f"Initial 10% SL Hit at {close_price:.2f}"
     # Check Supertrend (7, 2) Flip to Bearish
     elif st_7_2_current == -1:
         exit_triggered = True
@@ -160,11 +178,11 @@ def process_trade_exits(symbol: str, current_bar: pd.Series, st_7_2_current: int
         pnl_pct = ((close_price - pos['entry_price']) / pos['entry_price']) * 100
         send_telegram_alert(
             f"🚨 *EXIT SIGNAL: {symbol}*\n"
-            f"Reason: {exit_reason}\n"
-            f"Exit Price: ₹{close_price:.2f}\n"
-            f"Entry Price: ₹{pos['entry_price']:.2f}\n"
-            f"PnL: {pnl_pct:+.2f}%\n"
-            f"Time: {datetime.now().strftime('%H:%M:%S')}"
+            f"• Reason: {exit_reason}\n"
+            f"• Exit Price: ₹{close_price:.2f}\n"
+            f"• Entry Price: ₹{pos['entry_price']:.2f}\n"
+            f"• PnL: {pnl_pct:+.2f}%\n"
+            f"• Time: {datetime.now().strftime('%H:%M:%S')}"
         )
         del active_positions[symbol]
 
@@ -173,11 +191,9 @@ def process_trade_exits(symbol: str, current_bar: pd.Series, st_7_2_current: int
 # ==============================================================================
 def fetch_candle_data(symbol: str) -> pd.DataFrame:
     """
-    Placeholder: Replace with your broker's historical data API 
-    (e.g., kite.historical_data, dhan.intraday_daily_minute_charts, etc.)
-    Expected DataFrame columns: ['open', 'high', 'low', 'close', 'volume']
+    Replace with your broker's historical data API call (e.g. Zerodha Kite or Dhan).
+    Requires columns: ['open', 'high', 'low', 'close', 'volume']
     """
-    # Sample mock DataFrame format for demonstration:
     np.random.seed(abs(hash(symbol)) % 10000000)
     prices = np.cumprod(1 + np.random.normal(0, 0.01, 100)) * 500
     df = pd.DataFrame({
@@ -202,7 +218,7 @@ def run_scanner_pipeline():
                 if df.empty or len(df) < 30:
                     continue
 
-                # Strategy 1 Calculations
+                # Strategy 1 & Exit Indicator Calculations
                 st_10_2 = compute_supertrend(df, period=10, multiplier=2.0)
                 st_7_2 = compute_supertrend(df, period=7, multiplier=2.0)
                 rsi = compute_rsi(df['close'], period=14)
@@ -218,43 +234,35 @@ def run_scanner_pipeline():
                     process_trade_exits(symbol, df.iloc[curr_idx], st_7_2.iloc[curr_idx])
                     continue
 
-                # ==========================================================
-                # STRATEGY 1 ENTRY CONDITIONS:
-                # 1. Supertrend (10, 2) is Bullish (== 1)
-                # 2. RSI (14) > 60
-                # 3. Candle Close > Bollinger Upper Band (20, 2)
-                # 4. Candle Close > Pivot Point R1
-                # ==========================================================
+                # Strategy 1 Conditions Check
                 cond_st = (st_10_2.iloc[curr_idx] == 1)
                 cond_rsi = (rsi.iloc[curr_idx] > 60)
                 cond_bb = (curr_close > bb_upper.iloc[curr_idx])
                 cond_r1 = (curr_close > pivot_r1.iloc[curr_idx])
 
                 if cond_st and cond_rsi and cond_bb and cond_r1:
-                    # Enter Long
                     active_positions[symbol] = {
                         'entry_price': curr_close,
-                        'initial_sl': curr_close * 0.90,  # 10% Initial SL
-                        'peak_price': curr_high           # Tracks peak for 10% trailing SL
+                        'initial_sl': curr_close * 0.90,
+                        'peak_price': curr_high
                     }
 
                     send_telegram_alert(
                         f"🚀 *STRATEGY 1 ENTRY: {symbol}*\n"
-                        f"Entry Price: ₹{curr_close:.2f}\n"
-                        f"Initial SL (10%): ₹{(curr_close * 0.90):.2f}\n"
-                        f"RSI: {rsi.iloc[curr_idx]:.2f}\n"
-                        f"Bollinger Upper: ₹{bb_upper.iloc[curr_idx]:.2f}\n"
-                        f"Pivot R1: ₹{pivot_r1.iloc[curr_idx]:.2f}\n"
-                        f"Supertrend (10,2): Bullish\n"
-                        f"Time: {datetime.now().strftime('%H:%M:%S')}"
+                        f"• Entry Price: ₹{curr_close:.2f}\n"
+                        f"• Initial SL (10%): ₹{(curr_close * 0.90):.2f}\n"
+                        f"• RSI: {rsi.iloc[curr_idx]:.2f}\n"
+                        f"• Bollinger Upper: ₹{bb_upper.iloc[curr_idx]:.2f}\n"
+                        f"• Pivot R1: ₹{pivot_r1.iloc[curr_idx]:.2f}\n"
+                        f"• Supertrend (10,2): Bullish\n"
+                        f"• Time: {datetime.now().strftime('%H:%M:%S')}"
                     )
 
             except Exception as e:
-                print(f"Error processing {symbol}: {e}")
+                print(f"[ERROR] Failed processing {symbol}: {e}")
 
-        # Throttle to respect API rate limits between groups of 10
+        # Throttle to respect API limits between groups of 10
         time.sleep(0.5)
 
 if __name__ == "__main__":
-    # Example execution loop
     run_scanner_pipeline()
