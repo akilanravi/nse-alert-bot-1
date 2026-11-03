@@ -1,17 +1,17 @@
-name: V2 Yahoo Finance Telegram Alert Scanner
+name: 5M Telegram Alert Scanner & Pulse
 
 on:
   schedule:
-    # 09:25 IST (03:55 UTC), Mon-Fri. Python waits until 09:30 IST to scan.
+    # 09:25 AM IST (03:55 AM UTC), Mon-Fri - Live Scanner
     - cron: '55 3 * * 1-5'
-    # 17:05 IST (11:35 UTC), Mon-Fri.
+    # 05:05 PM IST (11:35 AM UTC), Mon-Fri - Daily Summary Report
     - cron: '35 11 * * 1-5'
   workflow_dispatch:
     inputs:
       action:
-        description: "Choose scan or report"
+        description: 'Choose execution action'
         required: true
-        default: "scan"
+        default: 'scan'
         type: choice
         options:
           - scan
@@ -21,7 +21,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: v2-yahoo-alert-scanner-${{ github.ref }}
+  group: nse-scanner-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
       TELEGRAM_CHAT_ID_2: ${{ secrets.TELEGRAM_CHAT_ID_2 }}
       LOG_LEVEL: INFO
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
@@ -44,37 +44,40 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip yfinance pandas numpy pytz requests
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas numpy pytz requests
 
-      - name: Run V2 scanner
+      - name: Run Master Alert Scanner
         run: python bot.py --scan
 
-      - name: Commit scanner state
+      - name: Commit & Push Trailing State
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ ! -f trade_state_master.json ]; then
-            echo "No scanner state file was produced."
+            echo "No state file produced."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
           git add trade_state_master.json
           if git diff --cached --quiet; then
             echo "No state changes to commit."
             exit 0
           fi
-          git commit -m "Update V2 scanner state [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git commit -m "Update intraday trading state [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}" || true
 
   send-daily-report:
     if: github.event.schedule == '35 11 * * 1-5' || (github.event_name == 'workflow_dispatch' && inputs.action == 'report')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       TELEGRAM_BOT_TOKEN_1: ${{ secrets.TELEGRAM_BOT_TOKEN_1 }}
       TELEGRAM_CHAT_ID_1: ${{ secrets.TELEGRAM_CHAT_ID_1 }}
@@ -82,7 +85,7 @@ jobs:
       TELEGRAM_CHAT_ID_2: ${{ secrets.TELEGRAM_CHAT_ID_2 }}
       LOG_LEVEL: INFO
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
@@ -90,10 +93,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip yfinance pandas numpy pytz requests
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas numpy pytz requests
 
-      - name: Generate daily alert report
+      - name: Generate & Dispatch 5 PM PnL Report
         run: python bot.py --report
