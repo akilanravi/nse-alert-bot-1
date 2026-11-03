@@ -1,47 +1,41 @@
-import os
-import sys
-import json
-import time
 import argparse
-from datetime import datetime, time as dtime
-import pytz
-import requests
-import pandas as pd
+import html
+import json
+import os
+import re
+import time
+from datetime import datetime, timedelta, time as dtime
+from zoneinfo import ZoneInfo
+
 import numpy as np
+import pandas as pd
+import requests
 import yfinance as yf
 
-# ==============================================================================
-# 1. TIMEZONE & TELEGRAM CONFIGURATION
-# ==============================================================================
-IST = pytz.timezone('Asia/Kolkata')
+IST = ZoneInfo("Asia/Kolkata")
+STATE_FILE = "trade_state.json"
 
-TELEGRAM_BOT_CONFIGS = [
-    {
-        "token": os.getenv("TELEGRAM_BOT_TOKEN_1", "8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms"),
-        "chat_id": os.getenv("TELEGRAM_CHAT_ID_1", "8865083462")
-    },
-    {
-        "token": os.getenv("TELEGRAM_BOT_TOKEN_2", "8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k"),
-        "chat_id": os.getenv("TELEGRAM_CHAT_ID_2", "846124589")
-    }
+# ==============================================================================
+# SETTINGS (change here)
+# ==============================================================================
+INITIAL_SL_PCT = 0.10        # initial stop loss on the UNDERLYING price (not option premium)
+TRAIL_PCT = 0.10             # trailing stop, % below the peak price since entry
+RSI_MIN = 60.0               # entry needs RSI(14) above this
+CANDLE_MIN = 5               # candle size in minutes
+MAX_DATA_AGE_MIN = 20        # ignore a symbol whose last completed candle is older than this
+SCAN_START = dtime(9, 20)    # first completed 5m candle (09:15-09:20)
+SCAN_END = dtime(15, 45)     # stop scanning after this
+REPORT_AFTER = dtime(15, 35)
+RANKING_LATE_MIN = 20        # still send a ranking if the run is up to this late
+CHUNK = 50                   # symbols per yfinance download call
+
+RANKING_SLOTS = [
+    dtime(h, m) for h in range(9, 16) for m in (0, 30)
+    if dtime(9, 30) <= dtime(h, m) <= dtime(15, 0)
 ]
 
-def send_telegram_alert(message: str):
-    """Broadcasts messages to both configured Telegram channels."""
-    for cfg in TELEGRAM_BOT_CONFIGS:
-        token = cfg.get("token")
-        chat_id = cfg.get("chat_id")
-        if not token or not chat_id:
-            continue
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-        try:
-            requests.post(url, json=payload, timeout=8)
-        except Exception as e:
-            print(f"[ERROR] Failed to send Telegram message to {chat_id}: {e}")
-
 # ==============================================================================
-# 2. 210 F&O SYMBOLS SPLIT INTO GROUPS OF 10
+# SYMBOLS  (Yahoo Finance tickers). A ticker with no data is reported once a day.
 # ==============================================================================
 RAW_SYMBOLS = [
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "NIFTY_MID_SELECT.NS",
@@ -80,94 +74,222 @@ RAW_SYMBOLS = [
     "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UNIONBANK.NS", "UPL.NS",
     "VBL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "ZYDUSLIFE.NS", "BSE.NS", "CDSL.NS",
     "ANGELONE.NS", "KEI.NS", "PRESTIGE.NS", "POLICYBZR.NS", "MAXHEALTH.NS",
-    "SONACOMS.NS", "SUZLON.NS", "NHPC.NS", "SJVN.NS", "IRFC.NS", "RVNL.NS", "HUDCO.NS"
+    "SONACOMS.NS", "SUZLON.NS", "NHPC.NS", "SJVN.NS", "IRFC.NS", "RVNL.NS", "HUDCO.NS",
 ]
 
-CHUNK_SIZE = 10
-SYMBOL_GROUPS = {
-    f"group_{i+1}": RAW_SYMBOLS[i * CHUNK_SIZE:(i + 1) * CHUNK_SIZE]
-    for i in range((len(RAW_SYMBOLS) + CHUNK_SIZE - 1) // CHUNK_SIZE)
+DISPLAY_NAMES = {
+    "^NSEI": "NIFTY50",
+    "^NSEBANK": "BANKNIFTY",
+    "NIFTY_FIN_SERVICE.NS": "FINNIFTY",
+    "NIFTY_MID_SELECT.NS": "MIDCPNIFTY",
 }
 
-# ==============================================================================
-# 3. TECHNICAL INDICATORS & COMPOSITE FORMULA
-# ==============================================================================
-def calculate_supertrend(df: pd.DataFrame, period: int, multiplier: float) -> pd.Series:
-    high, low, close = df['high'], df['low'], df['close']
-    tr1 = high - low
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/period, adjust=False).mean()
 
+def display_name(symbol: str) -> str:
+    return DISPLAY_NAMES.get(symbol) or symbol.replace(".NS", "")
+
+
+# ==============================================================================
+# TELEGRAM
+# ==============================================================================
+def telegram_targets():
+    targets = []
+    for n in ("1", "2"):
+        token = os.getenv(f"TELEGRAM_BOT_TOKEN_{n}", "").strip()
+        chat = os.getenv(f"TELEGRAM_CHAT_ID_{n}", "").strip()
+        if token and chat:
+            targets.append((n, token, chat))
+    return targets
+
+
+def strip_tags(text: str) -> str:
+    return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+
+def send_telegram(message: str, dry_run: bool = False) -> bool:
+    """Send to every configured chat. Retries on rate-limit. Never prints the token."""
+    if dry_run:
+        print("[DRY-RUN ALERT]\n" + strip_tags(message) + "\n")
+        return True
+    targets = telegram_targets()
+    if not targets:
+        print("[WARN] No Telegram secrets configured - message not sent:")
+        print(strip_tags(message))
+        return False
+
+    all_ok = True
+    for n, token, chat in targets:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        sent = False
+        for _ in range(3):
+            try:
+                r = requests.post(url, json=payload, timeout=15)
+            except Exception as e:  # do not print e: it can contain the URL (= the token)
+                print(f"[ERROR] Telegram recipient {n}: {type(e).__name__}")
+                time.sleep(2)
+                continue
+            if r.status_code == 200:
+                sent = True
+                break
+            if r.status_code == 429:
+                try:
+                    wait = int(r.json().get("parameters", {}).get("retry_after", 3))
+                except Exception:
+                    wait = 3
+                time.sleep(min(wait + 1, 30))
+                continue
+            print(f"[ERROR] Telegram recipient {n}: HTTP {r.status_code} {r.text[:200]}")
+            break
+        if not sent:
+            all_ok = False
+            print(f"[ERROR] Telegram recipient {n}: message NOT delivered")
+    return all_ok
+
+
+# ==============================================================================
+# DATA
+# ==============================================================================
+def _clean_frame(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [str(c).lower() for c in df.columns]
+    need = ["open", "high", "low", "close"]
+    if any(c not in df.columns for c in need):
+        return pd.DataFrame()
+    if "volume" not in df.columns:
+        df["volume"] = 0.0
+    df = df.dropna(subset=need)
+    if df.empty:
+        return df
+    df["volume"] = df["volume"].fillna(0.0)
+    idx = df.index
+    if idx.tz is None:
+        idx = idx.tz_localize("UTC")
+    df.index = idx.tz_convert(IST)
+    df = df[~df.index.duplicated(keep="last")].sort_index()
+    # drop the candle that is still forming
+    if df.index[-1] + timedelta(minutes=CANDLE_MIN) > now:
+        df = df.iloc[:-1]
+    return df
+
+
+def fetch_all(symbols, now: datetime):
+    """Returns ({symbol: DataFrame}, [symbols with no data])."""
+    data, missing = {}, []
+    for i in range(0, len(symbols), CHUNK):
+        chunk = symbols[i:i + CHUNK]
+        raw = None
+        try:
+            raw = yf.download(
+                chunk, period="5d", interval="5m", group_by="ticker",
+                auto_adjust=False, progress=False, threads=True,
+            )
+        except Exception as e:
+            print(f"[ERROR] download failed for chunk {i // CHUNK + 1}: {type(e).__name__}")
+        for s in chunk:
+            df = None
+            try:
+                if raw is not None and not raw.empty:
+                    if isinstance(raw.columns, pd.MultiIndex):
+                        if s in raw.columns.get_level_values(0):
+                            df = raw[s]
+                    elif len(chunk) == 1:
+                        df = raw
+                if df is not None:
+                    df = _clean_frame(df, now)
+            except Exception as e:
+                print(f"[ERROR] {s}: {type(e).__name__}")
+                df = None
+            if df is None or len(df) < 40:
+                missing.append(s)
+            else:
+                data[s] = df
+    return data, missing
+
+
+# ==============================================================================
+# INDICATORS
+# ==============================================================================
+def supertrend(df: pd.DataFrame, period: int, multiplier: float) -> pd.Series:
+    """1 = bullish, -1 = bearish."""
+    high, low, close = df["high"], df["low"], df["close"]
+    tr = pd.concat(
+        [high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1
+    ).max(axis=1)
+    atr = tr.ewm(alpha=1 / period, adjust=False).mean()
     hl2 = (high + low) / 2
-    upper = hl2 + (multiplier * atr)
-    lower = hl2 - (multiplier * atr)
-
-    final_upper = pd.Series(0.0, index=df.index)
-    final_lower = pd.Series(0.0, index=df.index)
-    trend = pd.Series(1, index=df.index)
-
-    for i in range(1, len(df)):
-        final_upper.iloc[i] = upper.iloc[i] if upper.iloc[i] < final_upper.iloc[i-1] or close.iloc[i-1] > final_upper.iloc[i-1] else final_upper.iloc[i-1]
-        final_lower.iloc[i] = lower.iloc[i] if lower.iloc[i] > final_lower.iloc[i-1] or close.iloc[i-1] < final_lower.iloc[i-1] else final_lower.iloc[i-1]
-
-        if trend.iloc[i-1] == 1:
-            trend.iloc[i] = -1 if close.iloc[i] < final_lower.iloc[i] else 1
+    upper = (hl2 + multiplier * atr).to_numpy()
+    lower = (hl2 - multiplier * atr).to_numpy()
+    c = close.to_numpy()
+    n = len(c)
+    fu, fl = upper.copy(), lower.copy()
+    trend = np.ones(n, dtype=int)
+    for i in range(1, n):
+        fu[i] = upper[i] if (upper[i] < fu[i - 1] or c[i - 1] > fu[i - 1]) else fu[i - 1]
+        fl[i] = lower[i] if (lower[i] > fl[i - 1] or c[i - 1] < fl[i - 1]) else fl[i - 1]
+        if trend[i - 1] == 1:
+            trend[i] = -1 if c[i] < fl[i] else 1
         else:
-            trend.iloc[i] = 1 if close.iloc[i] > final_upper.iloc[i] else -1
+            trend[i] = 1 if c[i] > fu[i] else -1
+    return pd.Series(trend, index=df.index)
 
-    return trend  # 1 = Bullish, -1 = Bearish
 
-def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
-    gain = delta.clip(lower=0).ewm(alpha=1/period, adjust=False).mean()
-    loss = (-delta.clip(upper=0)).ewm(alpha=1/period, adjust=False).mean()
-    rs = gain / (loss + 1e-9)
-    return 100 - (100 / (1 + rs))
+    gain = delta.clip(lower=0).ewm(alpha=1 / period, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / period, adjust=False).mean()
+    return 100 - (100 / (1 + gain / (loss + 1e-9)))
 
-def calculate_bollinger_upper(series: pd.Series, length: int = 20, num_std: float = 2.0) -> pd.Series:
-    return series.rolling(length).mean() + (series.rolling(length).std() * num_std)
 
-def calculate_pivot_r1(df: pd.DataFrame) -> pd.Series:
-    pivot = (df['high'].shift(1) + df['low'].shift(1) + df['close'].shift(1)) / 3
-    return (2 * pivot) - df['low'].shift(1)
+def bollinger_upper(series: pd.Series, length: int = 20, num_std: float = 2.0) -> pd.Series:
+    return series.rolling(length).mean() + series.rolling(length).std() * num_std
 
-def compute_composite_strength(df: pd.DataFrame, prev_close: float) -> dict:
-    """
-    Computes your exact composite formula (-100 to +100) based on:
-    Momentum (1.00), VWAP (0.95), Volume (0.85), Range (0.60), Trend (0.50), OI (0.35)
-    """
-    if df.empty or len(df) < 5:
-        return {"score": 0.0, "ltp": 0.0, "chg_pct": 0.0, "vwap": 0.0, "range_pct": 0.0}
 
-    ltp = float(df['close'].iloc[-1])
-    day_high = float(df['high'].max())
-    day_low = float(df['low'].min())
-    day_open = float(df['open'].iloc[0])
-    day_vol = float(df['volume'].sum())
+def daily_pivot_r1(df: pd.DataFrame, today):
+    """Classic DAILY pivot R1 from the previous session's high / low / close."""
+    prior = df[df.index.date < today]
+    if prior.empty:
+        return None
+    last_day = prior.index.date[-1]
+    day = prior[prior.index.date == last_day]
+    h, l, c = float(day["high"].max()), float(day["low"].min()), float(day["close"].iloc[-1])
+    pivot = (h + l + c) / 3
+    return 2 * pivot - l
 
-    # 1. Momentum (Weight 1.00): |CHG%| > 0.5 counts
-    chg_pct = ((ltp - prev_close) / prev_close) * 100 if prev_close else 0.0
-    v_mom = np.clip(chg_pct / 3.0, -1.0, 1.0) if abs(chg_pct) > 0.5 else 0.0
 
-    # 2. VWAP (Weight 0.95): (LTP - VWAP) / VWAP
-    typical = (df['high'] + df['low'] + df['close']) / 3
-    vwap = (typical * df['volume']).sum() / (df['volume'].sum() + 1e-9)
-    vwap_dist = ((ltp - vwap) / vwap) * 100
-    v_vwap = np.clip(vwap_dist / 1.5, -1.0, 1.0)
+def composite_strength(today_df: pd.DataFrame, prev_close: float, avg_daily_vol: float) -> dict:
+    """-100..+100 score from TODAY's candles only (weights unchanged from your formula)."""
+    ltp = float(today_df["close"].iloc[-1])
+    day_high = float(today_df["high"].max())
+    day_low = float(today_df["low"].min())
+    day_open = float(today_df["open"].iloc[0])
+    day_vol = float(today_df["volume"].sum())
 
-    # 3. Volume (Weight 0.85): > 1.5x median counts in direction of move
-    median_vol = 1_500_000
-    vol_ratio = day_vol / median_vol
-    v_vol = np.clip((vol_ratio - 1.0) / 3.0, 0.0, 1.0) * np.sign(chg_pct) if vol_ratio > 1.5 else 0.0
+    chg_pct = (ltp - prev_close) / prev_close * 100 if prev_close else 0.0
+    v_mom = float(np.clip(chg_pct / 3.0, -1, 1)) if abs(chg_pct) > 0.5 else 0.0
 
-    # 4. Range (Weight 0.60): (LTP - Low) / (High - Low)
+    typical = (today_df["high"] + today_df["low"] + today_df["close"]) / 3
+    if day_vol > 0:
+        vwap = float((typical * today_df["volume"]).sum() / day_vol)
+    else:  # indices have no volume on Yahoo
+        vwap = float(typical.mean())
+    v_vwap = float(np.clip(((ltp - vwap) / vwap * 100) / 1.5, -1, 1)) if vwap else 0.0
+
+    # volume vs what is normal by this time of day (average of earlier sessions, pro-rated)
+    sessions_fraction = min(1.0, len(today_df) / 75.0)
+    expected = avg_daily_vol * sessions_fraction
+    ratio = day_vol / expected if expected > 0 else 0.0
+    v_vol = float(np.clip((ratio - 1.0) / 3.0, 0, 1) * np.sign(chg_pct)) if ratio > 1.5 else 0.0
+
     rng = day_high - day_low
     pos = (ltp - day_low) / (rng + 1e-9)
-    v_range = (pos - 0.5) * 2.0  # Normalized to [-1.0, 1.0]
+    v_range = (pos - 0.5) * 2.0
 
-    # 5. Trend (Weight 0.50): Up if chg > 0.1 and ltp >= open; Down if chg < -0.1 and ltp < open
     if chg_pct > 0.1 and ltp >= day_open:
         v_trend = 1.0
     elif chg_pct < -0.1 and ltp < day_open:
@@ -175,321 +297,364 @@ def compute_composite_strength(df: pd.DataFrame, prev_close: float) -> dict:
     else:
         v_trend = 0.0
 
-    # 6. Open Interest / Proxy (Weight 0.35)
-    v_oi = 1.0 if chg_pct > 0.5 else (-1.0 if chg_pct < -0.5 else 0.0)
+    v_oi = 1.0 if chg_pct > 0.5 else (-1.0 if chg_pct < -0.5 else 0.0)  # proxy
 
     weights = [1.00, 0.95, 0.85, 0.60, 0.50, 0.35]
-    values  = [v_mom, v_vwap, v_vol, v_range, v_trend, v_oi]
-    score = (sum(w * v for w, v in zip(weights, values)) / sum(weights)) * 100
-
+    values = [v_mom, v_vwap, v_vol, v_range, v_trend, v_oi]
+    score = sum(w * v for w, v in zip(weights, values)) / sum(weights) * 100
     return {
         "score": round(score, 1),
         "ltp": round(ltp, 2),
         "chg_pct": round(chg_pct, 2),
         "vwap": round(vwap, 2),
-        "range_pct": round(pos * 100, 1)
     }
 
-# ==============================================================================
-# 4. PERSISTENT STATE MANAGEMENT
-# ==============================================================================
-def get_state_file(group_name: str) -> str:
-    return f"trade_state_{group_name}.json"
 
-def load_group_state(group_name: str) -> dict:
-    fname = get_state_file(group_name)
-    if os.path.exists(fname):
+# ==============================================================================
+# STATE
+# ==============================================================================
+def default_state() -> dict:
+    return {
+        "open_positions": {},
+        "closed_trades": [],
+        "last_exit_candle": {},
+        "rankings": {"date": "", "slots": []},
+        "report_sent": "",
+        "missing_reported": "",
+    }
+
+
+def load_state() -> dict:
+    state = default_state()
+    if os.path.exists(STATE_FILE):
         try:
-            with open(fname, 'r') as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {"open_positions": {}, "closed_trades": {}, "latest_scores": {}}
+            with open(STATE_FILE) as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                state.update(loaded)
+        except Exception as e:
+            print(f"[WARN] could not read {STATE_FILE}: {type(e).__name__} - starting fresh")
+    if not isinstance(state.get("closed_trades"), list):
+        state["closed_trades"] = []
+    for key, default in default_state().items():
+        if not isinstance(state.get(key), type(default)):
+            state[key] = default
+    state.pop("latest_scores", None)
+    return state
 
-def save_group_state(group_name: str, state: dict):
-    fname = get_state_file(group_name)
-    with open(fname, 'w') as f:
+
+def snapshot(state: dict) -> str:
+    return json.dumps(state, sort_keys=True)
+
+
+def save_state(state: dict):
+    with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
-# ==============================================================================
-# 5. HALF-HOURLY TOP 5 BULLS & BOTTOM 5 BEARS DISPATCHER
-# ==============================================================================
-def dispatch_half_hourly_rankings(now_ist):
-    """
-    Collects latest scores across all group state files and sends Top 5 Bulls & Bottom 5 Bears.
-    Runs strictly every 30 minutes between 09:30 and 15:00 IST.
-    """
-    all_scores = {}
-    for f in os.listdir("."):
-        if f.startswith("trade_state_") and f.endswith(".json"):
-            try:
-                with open(f, 'r') as fp:
-                    data = json.load(fp)
-                    scores = data.get("latest_scores", {})
-                    all_scores.update(scores)
-            except Exception:
-                pass
-
-    if len(all_scores) < 10:
-        return
-
-    sorted_stocks = sorted(all_scores.items(), key=lambda item: item[1]['score'], reverse=True)
-    top_5 = sorted_stocks[:5]
-    bottom_5 = sorted_stocks[-5:]
-
-    msg = [
-        f"📊 *LIVE 30M MOMENTUM RANKINGS*",
-        f"⏰ *Time:* {now_ist.strftime('%H:%M IST')}",
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"🟢 *TOP 5 STRONGEST BULLS*"
-    ]
-    for rank, (sym, d) in enumerate(top_5, 1):
-        msg.append(f"{rank}. `{sym}`: *{d['score']:+0.1f} pts* | CMP: ₹{d['ltp']} ({d['chg_pct']:+0.2f}%) | VWAP: ₹{d['vwap']}")
-
-    msg.append("\n🔴 *BOTTOM 5 STRONGEST BEARS*")
-    for rank, (sym, d) in enumerate(reversed(bottom_5), 1):
-        msg.append(f"{rank}. `{sym}`: *{d['score']:+0.1f} pts* | CMP: ₹{d['ltp']} ({d['chg_pct']:+0.2f}%) | VWAP: ₹{d['vwap']}")
-
-    msg.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
-    send_telegram_alert("\n".join(msg))
-    print(f"[{now_ist.strftime('%H:%M:%S IST')}] Sent half-hourly Top 5 & Bottom 5 rankings.")
 
 # ==============================================================================
-# 6. SCANNER ENGINE (09:30 - 15:30 IST)
+# ALERT MESSAGES
 # ==============================================================================
-def run_sector_scanner(group_name: str):
-    symbols = SYMBOL_GROUPS.get(group_name, [])
-    if not symbols:
-        print(f"Group '{group_name}' contains no symbols.")
-        return
+def h(text) -> str:
+    return html.escape(str(text))
 
-    print(f"Starting continuous scanner for {group_name} ({len(symbols)} symbols)...")
-    send_telegram_alert(
-        f"🟢 *5M Continuous Scanner Active: {group_name}*\n"
-        f"• Stocks Tracked: {len(symbols)}\n"
-        f"• Time Window: 09:30 to 15:30 IST\n"
-        f"• Half-hourly updates: 09:30 to 15:00 every 30 mins"
+
+def entry_message(name, price, sl, rsi_v, bb_v, r1_v, candle_ts, now) -> str:
+    return (
+        f"🟢 <b>BULL ENTRY SIGNAL: {h(name)}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"• Entry Price: ₹{price:.2f}\n"
+        f"• Initial Stop Loss ({INITIAL_SL_PCT:.0%}): ₹{sl:.2f}\n"
+        f"• Trailing SL: {TRAIL_PCT:.0%} below peak\n"
+        f"• RSI (14): {rsi_v:.2f} (&gt; {RSI_MIN:.0f})\n"
+        f"• Upper Bollinger: ₹{bb_v:.2f}\n"
+        f"• Daily Pivot R1: ₹{r1_v:.2f}\n"
+        f"• Supertrend (10, 2): Bullish\n"
+        f"• Candle: {candle_ts.strftime('%H:%M')} (5M, closed)\n"
+        f"• Time: {now.strftime('%H:%M:%S IST')}"
     )
 
-    state = load_group_state(group_name)
-    start_time = dtime(9, 30)
-    end_time = dtime(15, 30)
 
-    # Half-hourly schedule: (hour, minute)
-    half_hourly_slots = [
-        (9, 30), (10, 0), (10, 30), (11, 0), (11, 30),
-        (12, 0), (12, 30), (13, 0), (13, 30), (14, 0),
-        (14, 30), (15, 0)
-    ]
-    dispatched_slots = set()
+def exit_message(name, reason, exit_price, pos, pnl, eff_sl, candle_ts, now) -> str:
+    return (
+        f"🔴 <b>EXIT SIGNAL: {h(name)}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"• Reason: <b>{h(reason)}</b>\n"
+        f"• Exit Price: ₹{exit_price:.2f}\n"
+        f"• Entry Price: ₹{pos['entry_price']:.2f}\n"
+        f"• PnL: <b>{pnl:+.2f}%</b>\n"
+        f"• Active SL Level: ₹{eff_sl:.2f}\n"
+        f"• Candle: {candle_ts.strftime('%H:%M')} (5M, closed)\n"
+        f"• Time: {now.strftime('%H:%M:%S IST')}"
+    )
 
-    while True:
-        now_ist = datetime.now(IST)
-        curr_time = now_ist.time()
-
-        if curr_time < start_time:
-            time.sleep(15)
-            continue
-
-        if curr_time >= end_time:
-            print(f"[{now_ist.strftime('%H:%M:%S')}] 15:30 IST reached. Exiting scanner.")
-            break
-
-        # Process each symbol in the group
-        for symbol in symbols:
-            try:
-                ticker = yf.Ticker(symbol)
-                df = ticker.history(period="5d", interval="5m")
-                if df.empty or len(df) < 30:
-                    continue
-
-                df.columns = [c.lower() for c in df.columns]
-
-                # Compute Indicators
-                st_10_2 = calculate_supertrend(df, period=10, multiplier=2.0)
-                st_7_2 = calculate_supertrend(df, period=7, multiplier=2.0)
-                rsi = calculate_rsi(df['close'], period=14)
-                bb_upper = calculate_bollinger_upper(df['close'], length=20, num_std=2.0)
-                r1 = calculate_pivot_r1(df)
-
-                curr_close = float(df['close'].iloc[-1])
-                curr_high = float(df['high'].iloc[-1])
-                curr_st_7_2 = int(st_7_2.iloc[-1])
-                clean_sym = symbol.replace(".NS", "")
-
-                # Record Composite Strength Score for Half-Hourly Rankings
-                prev_day_close = float(df['close'].iloc[0]) # Baseline reference
-                score_data = compute_composite_strength(df, prev_day_close)
-                if "latest_scores" not in state:
-                    state["latest_scores"] = {}
-                state["latest_scores"][clean_sym] = score_data
-
-                # ------------------------------------------------------
-                # CHECK EXITS & BEAR REVERSAL MESSAGE
-                # ------------------------------------------------------
-                if clean_sym in state["open_positions"]:
-                    pos = state["open_positions"][clean_sym]
-                    pos["peak_price"] = max(pos["peak_price"], curr_high)
-                    trailing_sl = pos["peak_price"] * 0.90
-                    initial_sl = pos["initial_sl"]
-                    effective_sl = max(initial_sl, trailing_sl)
-
-                    exit_flag = False
-                    exit_reason = ""
-
-                    if curr_close <= effective_sl:
-                        exit_flag = True
-                        exit_reason = f"Trailing Stop Loss Hit (10% from Peak ₹{pos['peak_price']:.2f})" if effective_sl == trailing_sl else "Initial 10% Stop Loss Hit"
-                    elif curr_st_7_2 == -1:
-                        exit_flag = True
-                        exit_reason = "Supertrend (7, 2) Bearish Reversal"
-
-                    if exit_flag:
-                        pnl = ((curr_close - pos['entry_price']) / pos['entry_price']) * 100
-                        bear_msg = (
-                            f"🔴 *BEAR REVERSAL / EXIT SIGNAL: {clean_sym}*\n"
-                            f"━━━━━━━━━━━━━━━━━━━\n"
-                            f"• Reason: *{exit_reason}*\n"
-                            f"• Exit Price: ₹{curr_close:.2f}\n"
-                            f"• Entry Price: ₹{pos['entry_price']:.2f}\n"
-                            f"• PnL: *{pnl:+.2f}%*\n"
-                            f"• Active SL Level: ₹{effective_sl:.2f}\n"
-                            f"• Timeframe: 5M\n"
-                            f"• Time: {now_ist.strftime('%H:%M:%S IST')}"
-                        )
-                        send_telegram_alert(bear_msg)
-
-                        if "closed_trades" not in state or isinstance(state["closed_trades"], dict):
-                            state["closed_trades"] = []
-                        state["closed_trades"].append({
-                            "symbol": clean_sym,
-                            "entry_price": pos["entry_price"],
-                            "exit_price": curr_close,
-                            "pnl_pct": pnl,
-                            "exit_reason": exit_reason,
-                            "time": now_ist.strftime('%Y-%m-%d %H:%M:%S')
-                        })
-                        del state["open_positions"][clean_sym]
-                        save_group_state(group_name, state)
-                    continue
-
-                # ------------------------------------------------------
-                # CHECK STRATEGY 1 ENTRY & BULL MESSAGE
-                # ------------------------------------------------------
-                cond_st10 = (st_10_2.iloc[-1] == 1)
-                cond_rsi = (rsi.iloc[-1] > 60)
-                cond_bb = (curr_close > bb_upper.iloc[-1])
-                cond_r1 = (curr_close > r1.iloc[-1])
-
-                if cond_st10 and cond_rsi and cond_bb and cond_r1:
-                    initial_sl = curr_close * 0.90
-                    state["open_positions"][clean_sym] = {
-                        "entry_price": curr_close,
-                        "initial_sl": initial_sl,
-                        "peak_price": curr_high,
-                        "entry_time": now_ist.strftime('%Y-%m-%d %H:%M:%S')
-                    }
-                    save_group_state(group_name, state)
-
-                    bull_msg = (
-                        f"🟢 *BULL ENTRY SIGNAL: {clean_sym}*\n"
-                        f"━━━━━━━━━━━━━━━━━━━\n"
-                        f"• Entry Price: ₹{curr_close:.2f}\n"
-                        f"• Initial Stop Loss (10%): ₹{initial_sl:.2f}\n"
-                        f"• Trailing SL: 10% Ratchet\n"
-                        f"• RSI (14): {rsi.iloc[-1]:.2f} (> 60)\n"
-                        f"• Upper Bollinger: ₹{bb_upper.iloc[-1]:.2f}\n"
-                        f"• Pivot R1: ₹{r1.iloc[-1]:.2f}\n"
-                        f"• Supertrend (10, 2): Bullish\n"
-                        f"• Timeframe: 5M\n"
-                        f"• Time: {now_ist.strftime('%H:%M:%S IST')}"
-                    )
-                    send_telegram_alert(bull_msg)
-
-            except Exception as e:
-                print(f"Error checking {symbol}: {e}")
-
-        # Save states per round
-        save_group_state(group_name, state)
-
-        # ------------------------------------------------------
-        # HALF-HOURLY RANKINGS DISPATCH (RUN ONCE BY GROUP_1)
-        # ------------------------------------------------------
-        current_slot = (curr_time.hour, curr_time.minute)
-        for target_h, target_m in half_hourly_slots:
-            if curr_time.hour == target_h and abs(curr_time.minute - target_m) < 2:
-                slot_key = f"{target_h}:{target_m}"
-                if slot_key not in dispatched_slots:
-                    # Let group_1 lead the dispatch to prevent redundant duplicate messages
-                    if group_name == "group_1":
-                        dispatch_half_hourly_rankings(now_ist)
-                    dispatched_slots.add(slot_key)
-
-        time.sleep(60)
 
 # ==============================================================================
-# 7. END-OF-DAY PERFORMANCE REPORT
+# PER-SYMBOL LOGIC
 # ==============================================================================
-def generate_eod_report():
-    """Aggregates all trades and sends the 15:35 IST summary."""
-    now_ist = datetime.now(IST)
-    all_closed = []
-    all_open = []
+def analyse(name: str, df: pd.DataFrame, now: datetime, state: dict, dry_run: bool):
+    """Checks exit/entry on the last COMPLETED candle. Returns the strength score (or None)."""
+    last_ts = df.index[-1]
+    today = now.date()
+    if last_ts.date() != today:
+        return None
+    age_min = (now - (last_ts + timedelta(minutes=CANDLE_MIN))).total_seconds() / 60
+    if age_min > MAX_DATA_AGE_MIN:
+        return None
 
-    for f in os.listdir("."):
-        if f.startswith("trade_state_") and f.endswith(".json"):
-            try:
-                with open(f, 'r') as fp:
-                    data = json.load(fp)
-                    trades = data.get("closed_trades", [])
-                    if isinstance(trades, list):
-                        all_closed.extend(trades)
-                    for sym, pos in data.get("open_positions", {}).items():
-                        all_open.append({"symbol": sym, **pos})
-            except Exception:
-                pass
+    close = df["close"]
+    st10 = supertrend(df, 10, 2.0)
+    st7 = supertrend(df, 7, 2.0)
+    rsi14 = rsi(close, 14)
+    bb_up = bollinger_upper(close, 20, 2.0)
+    r1 = daily_pivot_r1(df, today)
 
-    total_trades = len(all_closed)
-    wins = [t for t in all_closed if t["pnl_pct"] > 0]
-    win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
-    avg_pnl = np.mean([t["pnl_pct"] for t in all_closed]) if total_trades > 0 else 0.0
+    cur_close = float(close.iloc[-1])
+    cur_high = float(df["high"].iloc[-1])
+    candle_key = last_ts.isoformat()
 
-    report_lines = [
-        f"📊 *EOD 5M SCANNER REPORT*",
-        f"📅 Date: {now_ist.strftime('%d-%b-%Y')}",
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"• Total Trades: *{total_trades}*",
-        f"• Win Rate: *{win_rate:.1f}%* ({len(wins)}/{total_trades})",
-        f"• Average Return: *{avg_pnl:+.2f}%*",
-        f"• Open Active Positions: *{len(all_open)}*",
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    ]
+    # ---- strength score (today's candles only) ----
+    today_df = df[df.index.date == today]
+    prior = df[df.index.date < today]
+    prev_close = float(prior["close"].iloc[-1]) if not prior.empty else float(today_df["open"].iloc[0])
+    avg_vol = float(prior.groupby(prior.index.date)["volume"].sum().mean()) if not prior.empty else 0.0
+    score = composite_strength(today_df, prev_close, avg_vol)
 
-    if all_closed:
-        report_lines.append("\n*Closed Trades Today:*")
-        for t in all_closed[-10:]:
-            report_lines.append(f"• `{t['symbol']}`: {t['pnl_pct']:+.2f}% ({t['exit_reason']})")
+    positions = state["open_positions"]
 
-    if all_open:
-        report_lines.append("\n*Open Positions Carrying Over:*")
-        for pos in all_open:
-            report_lines.append(f"• `{pos['symbol']}`: Entry ₹{pos['entry_price']:.2f} | Peak ₹{pos['peak_price']:.2f}")
+    # ---- exits ----
+    if name in positions:
+        pos = positions[name]
+        entry_ts = pd.Timestamp(pos["entry_ts"]) if pos.get("entry_ts") else None
+        window = df[df.index > entry_ts] if entry_ts is not None else df.tail(1)
+        peak_now = float(window["high"].max()) if not window.empty else cur_high
+        pos["peak_price"] = max(float(pos["peak_price"]), peak_now)
 
-    send_telegram_alert("\n".join(report_lines))
-    print("EOD report sent successfully.")
+        trailing = pos["peak_price"] * (1 - TRAIL_PCT)
+        initial = float(pos["initial_sl"])
+        eff_sl = max(initial, trailing)
+
+        reason = None
+        if cur_close <= eff_sl:
+            reason = (
+                f"Trailing stop hit ({TRAIL_PCT:.0%} below peak ₹{pos['peak_price']:.2f})"
+                if trailing >= initial else f"Initial {INITIAL_SL_PCT:.0%} stop loss hit"
+            )
+        elif int(st7.iloc[-1]) == -1:
+            reason = "Supertrend (7, 2) bearish reversal"
+
+        if reason:
+            pnl = (cur_close - pos["entry_price"]) / pos["entry_price"] * 100
+            send_telegram(exit_message(name, reason, cur_close, pos, pnl, eff_sl, last_ts, now), dry_run)
+            state["closed_trades"].append({
+                "symbol": name,
+                "entry_price": pos["entry_price"],
+                "exit_price": cur_close,
+                "pnl_pct": round(pnl, 3),
+                "exit_reason": reason,
+                "time": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "date": now.strftime("%Y-%m-%d"),
+            })
+            del positions[name]
+            state["last_exit_candle"][name] = candle_key
+        return score
+
+    # ---- entries (long only) ----
+    if state["last_exit_candle"].get(name) == candle_key:
+        return score
+    vals = [st10.iloc[-1], rsi14.iloc[-1], bb_up.iloc[-1], r1]
+    if any(v is None or pd.isna(v) for v in vals):
+        return score
+
+    if (
+        int(st10.iloc[-1]) == 1
+        and rsi14.iloc[-1] > RSI_MIN
+        and cur_close > bb_up.iloc[-1]
+        and cur_close > r1
+    ):
+        sl = cur_close * (1 - INITIAL_SL_PCT)
+        positions[name] = {
+            "entry_price": cur_close,
+            "initial_sl": sl,
+            "peak_price": cur_high,
+            "entry_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "entry_ts": candle_key,
+        }
+        send_telegram(
+            entry_message(name, cur_close, sl, float(rsi14.iloc[-1]), float(bb_up.iloc[-1]),
+                          float(r1), last_ts, now),
+            dry_run,
+        )
+    return score
+
 
 # ==============================================================================
-# 8. EXECUTION ENTRY POINT
+# RANKINGS & REPORT
 # ==============================================================================
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--group", type=str, help="Group name (e.g. group_1)")
-    parser.add_argument("--report", action="store_true", help="Generate EOD summary report")
-    args = parser.parse_args()
-
-    if args.report:
-        generate_eod_report()
-    elif args.group:
-        run_sector_scanner(args.group)
+def maybe_send_rankings(now: datetime, scores: dict, state: dict, dry_run: bool):
+    if len(scores) < 10:
+        return
+    slot_label = None
+    if dry_run:
+        slot_label = "dry-run"
     else:
-        print("Please specify --group <group_name> or --report")
+        due = [s for s in RANKING_SLOTS if s <= now.time()]
+        if not due:
+            return
+        slot = due[-1]
+        slot_dt = now.replace(hour=slot.hour, minute=slot.minute, second=0, microsecond=0)
+        if (now - slot_dt).total_seconds() / 60 > RANKING_LATE_MIN:
+            return
+        slot_label = slot.strftime("%H:%M")
+        today_s = now.strftime("%Y-%m-%d")
+        if state["rankings"].get("date") != today_s:
+            state["rankings"] = {"date": today_s, "slots": []}
+        if slot_label in state["rankings"]["slots"]:
+            return
+
+    ranked = sorted(scores.items(), key=lambda kv: kv[1]["score"], reverse=True)
+    top5, bottom5 = ranked[:5], ranked[-5:]
+    lines = [
+        "📊 <b>LIVE 30M MOMENTUM RANKINGS</b>",
+        f"⏰ <b>Time:</b> {now.strftime('%H:%M IST')}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🟢 <b>TOP 5 STRONGEST BULLS</b>",
+    ]
+    for i, (sym, d) in enumerate(top5, 1):
+        lines.append(f"{i}. <code>{h(sym)}</code>: <b>{d['score']:+.1f} pts</b> | CMP: ₹{d['ltp']} ({d['chg_pct']:+.2f}%) | VWAP: ₹{d['vwap']}")
+    lines.append("\n🔴 <b>BOTTOM 5 STRONGEST BEARS</b>")
+    for i, (sym, d) in enumerate(reversed(bottom5), 1):
+        lines.append(f"{i}. <code>{h(sym)}</code>: <b>{d['score']:+.1f} pts</b> | CMP: ₹{d['ltp']} ({d['chg_pct']:+.2f}%) | VWAP: ₹{d['vwap']}")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    ok = send_telegram("\n".join(lines), dry_run)
+    if ok and not dry_run:
+        state["rankings"]["slots"].append(slot_label)
+
+
+def send_report(state: dict, now: datetime, dry_run: bool = False) -> bool:
+    today_s = now.strftime("%Y-%m-%d")
+    closed = state["closed_trades"]
+    todays = [t for t in closed if str(t.get("date") or t.get("time", ""))[:10] == today_s]
+    wins = [t for t in todays if t["pnl_pct"] > 0]
+    n = len(todays)
+    win_rate = len(wins) / n * 100 if n else 0.0
+    avg = float(np.mean([t["pnl_pct"] for t in todays])) if n else 0.0
+    open_pos = state["open_positions"]
+
+    all_n = len(closed)
+    all_wins = len([t for t in closed if t["pnl_pct"] > 0])
+
+    lines = [
+        "📊 <b>EOD 5M SCANNER REPORT</b>",
+        f"📅 Date: {now.strftime('%d-%b-%Y')}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"• Trades closed today: <b>{n}</b>",
+        f"• Win rate today: <b>{win_rate:.1f}%</b> ({len(wins)}/{n})",
+        f"• Average return today: <b>{avg:+.2f}%</b>",
+        f"• Open positions: <b>{len(open_pos)}</b>",
+        f"• All-time: {all_n} trades, {(all_wins / all_n * 100 if all_n else 0):.1f}% win rate",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if todays:
+        lines.append("\n<b>Closed trades today:</b>")
+        for t in todays[-15:]:
+            lines.append(f"• <code>{h(t['symbol'])}</code>: {t['pnl_pct']:+.2f}% ({h(t['exit_reason'])})")
+    if open_pos:
+        lines.append("\n<b>Open positions carrying over:</b>")
+        for sym, p in open_pos.items():
+            lines.append(f"• <code>{h(sym)}</code>: Entry ₹{p['entry_price']:.2f} | Peak ₹{p['peak_price']:.2f}")
+    return send_telegram("\n".join(lines), dry_run)
+
+
+# ==============================================================================
+# RUN
+# ==============================================================================
+def run_once(dry_run: bool = False, now: datetime = None):
+    now = now or datetime.now(IST)
+    if not dry_run:
+        if now.weekday() >= 5:
+            print("Weekend - nothing to do.")
+            return
+        if now.time() < SCAN_START:
+            print(f"{now:%H:%M} IST is before {SCAN_START:%H:%M} - nothing to do.")
+            return
+
+    state = load_state()
+    before = snapshot(state)
+    symbols = list(dict.fromkeys(RAW_SYMBOLS))
+    data, missing = fetch_all(symbols, now)
+    print(f"Downloaded {len(data)} symbols, {len(missing)} without data.")
+
+    # dry-run: behave as if it is just after the newest candle closed
+    if dry_run and data:
+        newest = max(df.index[-1] for df in data.values())
+        now = newest + timedelta(minutes=CANDLE_MIN + 1)
+
+    today = now.date()
+    fresh = sum(1 for df in data.values() if df.index[-1].date() == today)
+    if fresh < 10:
+        print("No candles for today (holiday, or Yahoo returned nothing) - nothing to do.")
+        if missing and len(missing) > len(symbols) // 2 and not dry_run:
+            print("[WARN] most symbols returned no data - Yahoo may be blocking this runner.")
+        if snapshot(state) != before or not os.path.exists(STATE_FILE):
+            if not dry_run:
+                save_state(state)
+        return
+
+    today_s = now.strftime("%Y-%m-%d")
+    if missing and state["missing_reported"] != today_s:
+        names = ", ".join(display_name(s) for s in missing[:40])
+        extra = f" (+{len(missing) - 40} more)" if len(missing) > 40 else ""
+        ok = send_telegram(
+            f"⚠️ <b>No Yahoo data for {len(missing)} symbol(s)</b>\n{h(names)}{h(extra)}\n"
+            f"Wrong/old ticker or a temporary Yahoo problem.", dry_run)
+        if ok and not dry_run:
+            state["missing_reported"] = today_s
+
+    scores = {}
+    if dry_run or now.time() <= SCAN_END:
+        for sym, df in data.items():
+            name = display_name(sym)
+            try:
+                score = analyse(name, df, now, state, dry_run)
+            except Exception as e:
+                print(f"[ERROR] {name}: {type(e).__name__}: {e}")
+                continue
+            if score:
+                scores[name] = score
+        maybe_send_rankings(now, scores, state, dry_run)
+
+    if dry_run or (now.time() >= REPORT_AFTER and state["report_sent"] != today_s):
+        if send_report(state, now, dry_run) and not dry_run:
+            state["report_sent"] = today_s
+
+    if not dry_run and (snapshot(state) != before or not os.path.exists(STATE_FILE)):
+        save_state(state)
+        print("State saved.")
+    print(f"Done. Open positions: {len(state['open_positions'])}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="NSE 5m alert scanner")
+    ap.add_argument("--once", action="store_true", help="one scan run (used by the workflow)")
+    ap.add_argument("--dry-run", action="store_true", help="test mode: print alerts, send nothing, save nothing")
+    ap.add_argument("--report", action="store_true", help="send the end-of-day report now")
+    ap.add_argument("--test-telegram", action="store_true", help="send a test message")
+    args = ap.parse_args()
+
+    if args.test_telegram:
+        ok = send_telegram("✅ <b>Scanner test</b>\nTelegram connection works.")
+        print("Test message delivered." if ok else "Test message FAILED - check secrets / chat ids.")
+        return
+    if args.report:
+        send_report(load_state(), datetime.now(IST))
+        return
+    if args.once or args.dry_run:
+        run_once(dry_run=args.dry_run)
+        return
+    ap.print_help()
+
+
+if __name__ == "__main__":
+    main()
