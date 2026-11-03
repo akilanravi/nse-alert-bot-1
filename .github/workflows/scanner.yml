@@ -1,12 +1,11 @@
-name: 5M Parallel Telegram Alert Scanner
+name: 5M Telegram Alert Scanner & Pulse
 
 on:
   schedule:
-    # 9:30 AM IST = 4:00 AM UTC (Mon-Fri) - Starts continuous scanning loop
-    - cron: '0 4 * * 1-5'
-    # 3:35 PM IST = 10:05 AM UTC (Mon-Fri) - Generates EOD Summary Report
-    - cron: '5 10 * * 1-5'
-
+    # 9:10 AM IST (3:40 AM UTC), Monday to Friday - Live Scanner
+    - cron: '40 3 * * 1-5'
+    # 5:05 PM IST (11:35 AM UTC), Monday to Friday - Daily Summary Report
+    - cron: '35 11 * * 1-5'
   workflow_dispatch:
     inputs:
       action:
@@ -20,163 +19,55 @@ on:
 
 permissions:
   contents: write
-  actions: read
-
-concurrency:
-  group: yahoo-telegram-scanner-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
-  scan:
-    if: |
-      (github.event_name == 'schedule' &&
-       github.event.schedule == '0 4 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' &&
-       inputs.action == 'scan')
-
+  run-live-scanner:
+    if: github.event.schedule == '40 3 * * 1-5' || github.event.inputs.action == 'scan'
     runs-on: ubuntu-latest
-    timeout-minutes: 380
-
-    strategy:
-      fail-fast: false
-      matrix:
-        group:
-          - group_1
-          - group_2
-          - group_3
-          - group_4
-          - group_5
-          - group_6
-          - group_7
-          - group_8
-          - group_9
-          - group_10
-          - group_11
-          - group_12
-          - group_13
-          - group_14
-          - group_15
-          - group_16
-          - group_17
-          - group_18
-          - group_19
-          - group_20
-          - group_21
-
+    timeout-minutes: 370
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install yfinance pandas numpy pytz requests
 
-      - name: Run continuous market scanner (09:30 - 15:30 IST)
-        env:
-          TELEGRAM_BOT_TOKEN_1: ${{ secrets.TELEGRAM_BOT_TOKEN_1 }}
-          TELEGRAM_CHAT_ID_1: ${{ secrets.TELEGRAM_CHAT_ID_1 }}
-          TELEGRAM_BOT_TOKEN_2: ${{ secrets.TELEGRAM_BOT_TOKEN_2 }}
-          TELEGRAM_CHAT_ID_2: ${{ secrets.TELEGRAM_CHAT_ID_2 }}
+      - name: Run Master Market Scanner
         run: |
-          python bot.py --group "${{ matrix.group }}"
+          python bot.py --scan
 
-      - name: Upload sector state files
+      - name: Save Trailing States & PnL History
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: state-${{ matrix.group }}
-          path: trade_state_*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-  save-state:
-    if: |
-      always() &&
-      (
-        (github.event_name == 'schedule' &&
-         github.event.schedule == '0 4 * * 1-5') ||
-        (github.event_name == 'workflow_dispatch' &&
-         inputs.action == 'scan')
-      ) &&
-      needs.scan.result != 'cancelled'
-
-    needs: scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download sector state files
-        uses: actions/download-artifact@v4
-        with:
-          pattern: state-*
-          path: downloaded-state
-          merge-multiple: true
-
-      - name: Commit combined state files
         run: |
-          set -e
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add trade_state_master.json || true
+          git diff --staged --quiet || git commit -m "Update intraday trading state [skip ci]"
+          git push || true
 
-          if [ -d downloaded-state ]; then
-            find downloaded-state -type f -name 'trade_state_*.json' \
-              -exec cp {} . \;
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add trade_state_*.json || true
-
-          if git diff --cached --quiet; then
-            echo "No state changes to commit."
-            exit 0
-          fi
-
-          git commit -m "Update scanner trade states [skip ci]"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-
-  daily-report:
-    if: |
-      (github.event_name == 'schedule' &&
-       github.event.schedule == '5 10 * * 1-5') ||
-      (github.event_name == 'workflow_dispatch' &&
-       inputs.action == 'report')
-
+  send-daily-report:
+    if: github.event.schedule == '35 11 * * 1-5' || github.event.inputs.action == 'report'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pandas requests pytz
+          pip install yfinance pandas numpy pytz requests
 
-      - name: Generate daily report
-        env:
-          TELEGRAM_BOT_TOKEN_1: ${{ secrets.TELEGRAM_BOT_TOKEN_1 }}
-          TELEGRAM_CHAT_ID_1: ${{ secrets.TELEGRAM_CHAT_ID_1 }}
-          TELEGRAM_BOT_TOKEN_2: ${{ secrets.TELEGRAM_BOT_TOKEN_2 }}
-          TELEGRAM_CHAT_ID_2: ${{ secrets.TELEGRAM_CHAT_ID_2 }}
+      - name: Generate & Dispatch 5 PM PnL Report
         run: |
           python bot.py --report
