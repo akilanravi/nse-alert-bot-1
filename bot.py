@@ -65,7 +65,7 @@ STATE_FILE = Path(os.getenv("STATE_FILE", "trade_state_master.json"))
 IST = pytz.timezone("Asia/Kolkata")
 SCAN_START_MINUTES = 9 * 60 + 30
 SCAN_END_MINUTES = 15 * 60 + 15
-PULSE_MINUTES = (15, 45)
+PULSE_MINUTES = (0, 15, 30, 45)  # 15-minute interval pulse
 YF_BATCH_SIZE = 35
 
 logging.basicConfig(
@@ -89,13 +89,13 @@ def send_telegram(message):
                     timeout=10,
                 )
         except requests.RequestException as exc:
-            logging.error("Telegram network failure for chat %s: %s", chat_id, exc)
+            logging.error("Telegram error (%s): %s", chat_id, exc)
 
 def get_default_item_state():
     return {
         "in_trade": False, "trade_type": "", "entry_price": 0.0,
         "entry_time": None, "atm_strike": 0, "itm_strike": 0,
-        "strategy": "CONFLUENCE"
+        "strategy": "CONFLUENCE_5M"
     }
 
 def load_state(symbols):
@@ -115,7 +115,7 @@ def load_state(symbols):
                 m.update(saved_pos[symbol])
                 state["positions"][symbol] = m
     except Exception as exc:
-        logging.exception("Could not parse state file: %s", exc)
+        logging.exception("State read failed: %s", exc)
     return state
 
 def save_state(state):
@@ -236,10 +236,6 @@ def calculate_supertrend(frame, period=10, multiplier=2.0):
     return st, direction
 
 def calculate_adx(frame, period=14):
-    """
-    Standard Wilder's ADX calculation with RMA smoothing matching TradingView.
-    Requires at least 2*period bars for valid readings.
-    """
     if len(frame) < period * 2:
         return pd.Series(0.0, index=frame.index)
 
@@ -258,7 +254,6 @@ def calculate_adx(frame, period=14):
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
 
-    # Wilder's Smoothing (alpha = 1/period)
     tr_smooth = pd.Series(tr).ewm(alpha=1/period, adjust=False).mean()
     plus_di = 100 * (pd.Series(plus_dm, index=frame.index).ewm(alpha=1/period, adjust=False).mean() / tr_smooth.replace(0, np.nan))
     minus_di = 100 * (pd.Series(minus_dm, index=frame.index).ewm(alpha=1/period, adjust=False).mean() / tr_smooth.replace(0, np.nan))
@@ -281,7 +276,7 @@ def get_daily_context(tickers):
                 group_by="ticker", threads=True, auto_adjust=False,
             )
         except Exception as exc:
-            logging.warning("Daily download failed for batch: %s", exc)
+            logging.warning("Daily download failed: %s", exc)
             continue
         for ticker in batch:
             frame = normalize_ohlcv(extract_ticker_frame(raw, ticker))
@@ -297,16 +292,12 @@ def get_daily_context(tickers):
     return context
 
 def download_intraday(tickers):
-    """
-    Downloads 5 days of 5m bars to give Wilder's ADX and Supertrend 
-    sufficient historical depth for accurate readings.
-    """
     frames = {}
     for start in range(0, len(tickers), YF_BATCH_SIZE):
         batch = tickers[start:start + YF_BATCH_SIZE]
         try:
             raw = yf.download(
-                batch, period="5d", interval=TIMEFRAME, progress=False,
+                batch, period="3d", interval=TIMEFRAME, progress=False,
                 group_by="ticker", threads=True, auto_adjust=False,
             )
         except Exception as exc:
@@ -321,10 +312,11 @@ def download_intraday(tickers):
 def make_signal_message(side, name, spot, pivot, ema9, ema21, rsi, adx_val, strike_atm, strike_itm, stage):
     option = "CE" if side == "CALL" else "PE"
     return (
-        f"{'🟢' if side == 'CALL' else '🔴'} *[STRATEGY: CONFLUENCE] {side} {stage}*\n"
+        f"{'🟢' if side == 'CALL' else '🔴'} *[5M CONFLUENCE] {side} {stage}*\n"
         f"• `{name}` | Spot: ₹{spot:,.2f}\n"
         f"• Strike: Rec ITM `{strike_itm} {option}` (ATM: `{strike_atm} {option}`)\n"
-        f"• EMA 9/21: `{ema9:.2f} / {ema21:.2f}` | RSI: `{rsi:.1f}` | ADX: `{adx_val:.1f}`\n"
+        f"• EMA 9/21: `{ema9:.2f} / {ema21:.2f}`\n"
+        f"• RSI: `{rsi:.1f}` | ADX: `{adx_val:.1f}`\n"
         f"• Daily {'R1' if side == 'CALL' else 'S1'}: ₹{pivot:,.2f}"
     )
 
@@ -337,41 +329,43 @@ def run_scan_cycle(state, context_map, is_pulse_cycle, current_time_str):
     for ticker in symbols:
         try:
             frame = intraday_map.get(ticker, pd.DataFrame())
-            # Minimum 45 bars needed for ADX and EMA warmup
-            if len(frame) < 45 or ticker not in context_map:
+            if len(frame) < 35 or ticker not in context_map:
                 continue
             frame = frame.copy()
             ctx = context_map[ticker]
             pivot_r1, pivot_s1 = ctx["pivot_r1"], ctx["pivot_s1"]
 
             close = frame["Close"]
+            volume = frame["Volume"]
+
             ema9 = close.ewm(span=9, adjust=False).mean()
             ema21 = close.ewm(span=21, adjust=False).mean()
             rsi = calculate_rsi(close)
             bb_upper, bb_lower = calculate_bollinger_bands(close, period=20, mult=2.0)
             
-            # Entry Supertrend (10, 2)
+            # Entry Supertrend (10, 2) & Exit Supertrend (7, 2)
             st_entry, st_entry_dir = calculate_supertrend(frame, period=10, multiplier=2.0)
-            # Exit Supertrend (7, 2)
             st_exit, st_exit_dir = calculate_supertrend(frame, period=7, multiplier=2.0)
             
-            # ADX Calculation
             adx = calculate_adx(frame, period=14)
 
             last = frame.iloc[-1]
             spot = float(last["Close"])
+            current_vol = float(last["Volume"])
+
+            # 20-bar Average Volume for Market Pulse RVOL filter only
+            vol_avg_20 = float(volume.iloc[-21:-1].mean())
+            rvol = (current_vol / vol_avg_20) if vol_avg_20 > 0 else 0.0
 
             current_rsi = float(rsi.iloc[-1])
             current_adx = float(adx.iloc[-1])
             current_ema9, current_ema21 = float(ema9.iloc[-1]), float(ema21.iloc[-1])
-            prev_ema9, prev_ema21 = float(ema9.iloc[-2]), float(ema21.iloc[-2])
             current_st_entry = float(st_entry.iloc[-1])
             current_bb_upper, current_bb_lower = float(bb_upper.iloc[-1]), float(bb_lower.iloc[-1])
 
             if not all(math.isfinite(x) for x in (
                 current_rsi, current_adx, current_ema9,
-                current_ema21, prev_ema9, prev_ema21, current_st_entry,
-                current_bb_upper, current_bb_lower
+                current_ema21, current_st_entry, current_bb_upper, current_bb_lower
             )):
                 continue
 
@@ -381,38 +375,31 @@ def run_scan_cycle(state, context_map, is_pulse_cycle, current_time_str):
 
             st_entry_bull = float(st_entry_dir.iloc[-1]) == 1
             st_entry_bear = float(st_entry_dir.iloc[-1]) == -1
-
             st_exit_bull = float(st_exit_dir.iloc[-1]) == 1
             st_exit_bear = float(st_exit_dir.iloc[-1]) == -1
 
-            ema_cross_above = (prev_ema9 <= prev_ema21) and (current_ema9 > current_ema21)
-            ema_cross_below = (prev_ema9 >= prev_ema21) and (current_ema9 < current_ema21)
-
-            # STRICT ADX CRITERIA: Explicitly require current_adx > 20.0
-            adx_valid = bool(current_adx > 20.0 and not np.isnan(current_adx))
-
+            # 1. CALL ENTRY CONDITIONS
             signal_call = (
-                st_entry_bull
+                st_entry_bull                                          # Above Supertrend (10,2)
                 and (spot > current_st_entry)
-                and (current_rsi > 60.0)
-                and (spot > current_bb_upper)
-                and (spot > current_ema9)
-                and (spot > current_ema21)
-                and ema_cross_above
-                and (spot > pivot_r1)
-                and adx_valid
+                and (current_rsi > 60.0)                               # RSI strictly above 60
+                and (spot > current_bb_upper)                          # Closed above Bollinger Band
+                and (current_ema9 > current_ema21)                     # EMA 9 above EMA 21
+                and (spot > current_ema9 and spot > current_ema21)     # Candle close above both curves
+                and (spot > pivot_r1)                                  # Closed above Daily R1
+                and (current_adx > 20.0 and not np.isnan(current_adx)) # ADX strictly above 20
             )
 
+            # 2. PUT ENTRY CONDITIONS (Exact mirror reversal)
             signal_put = (
-                st_entry_bear
+                st_entry_bear                                          # Below Supertrend (10,2)
                 and (spot < current_st_entry)
-                and (current_rsi < 40.0)
-                and (spot < current_bb_lower)
-                and (spot < current_ema9)
-                and (spot < current_ema21)
-                and ema_cross_below
-                and (spot < pivot_s1)
-                and adx_valid
+                and (current_rsi < 40.0)                               # RSI strictly below 40
+                and (spot < current_bb_lower)                          # Closed below Bollinger Band
+                and (current_ema9 < current_ema21)                     # EMA 9 below EMA 21
+                and (spot < current_ema9 and spot < current_ema21)     # Candle close below both curves
+                and (spot < pivot_s1)                                  # Closed below Daily S1
+                and (current_adx > 20.0 and not np.isnan(current_adx)) # ADX strictly above 20
             )
 
             atm_ce, itm_ce = get_options_strikes(spot, WATCHLIST[ticker], "CALL")
@@ -424,15 +411,22 @@ def run_scan_cycle(state, context_map, is_pulse_cycle, current_time_str):
             if not verdicts:
                 verdicts.append("WAIT — In neutral range" if pivot_s1 <= spot <= pivot_r1 else "WAIT — Setup pending")
 
-            rankings.append({"name": name, "spot": spot, "pct": pct_change, "verdict": " | ".join(verdicts)})
+            rankings.append({
+                "name": name,
+                "spot": spot,
+                "pct": pct_change,
+                "rvol": rvol,
+                "verdict": " | ".join(verdicts)
+            })
             processed += 1
 
             # POSITION TRACKING & EXIT LOGIC
             pos = state["positions"].setdefault(ticker, get_default_item_state())
             if pos.get("in_trade"):
                 side = pos.get("trade_type")
-                # Strictly exit on Supertrend (7, 2) reversal only
                 exit_reason = None
+                
+                # STRICT EXIT: Supertrend (7, 2) reversal only
                 if side == "CALL" and st_exit_bear:
                     exit_reason = "Supertrend (7,2) flipped Bearish"
                     pnl = spot - float(pos["entry_price"])
@@ -442,7 +436,7 @@ def run_scan_cycle(state, context_map, is_pulse_cycle, current_time_str):
 
                 if exit_reason:
                     state["closed_trades"].append({
-                        "strategy": "CONFLUENCE", "ticker": name, "symbol": ticker, "type": side,
+                        "strategy": "CONFLUENCE_5M", "ticker": name, "symbol": ticker, "type": side,
                         "strike": pos.get("itm_strike"), "entry": pos["entry_price"],
                         "exit": spot, "pnl": round(pnl, 2), "reason": exit_reason,
                         "closed_at": dt.datetime.now(IST).isoformat(),
@@ -461,7 +455,7 @@ def run_scan_cycle(state, context_map, is_pulse_cycle, current_time_str):
                         "in_trade": True, "trade_type": "CALL",
                         "entry_price": spot, "entry_time": dt.datetime.now(IST).isoformat(),
                         "atm_strike": atm_ce, "itm_strike": itm_ce,
-                        "strategy": "CONFLUENCE"
+                        "strategy": "CONFLUENCE_5M"
                     })
                     send_telegram(make_signal_message("CALL", name, spot, pivot_r1, current_ema9, current_ema21, current_rsi, current_adx, atm_ce, itm_ce, "ENTRY CONFIRMED"))
                 elif signal_put:
@@ -469,36 +463,45 @@ def run_scan_cycle(state, context_map, is_pulse_cycle, current_time_str):
                         "in_trade": True, "trade_type": "PUT",
                         "entry_price": spot, "entry_time": dt.datetime.now(IST).isoformat(),
                         "atm_strike": atm_pe, "itm_strike": itm_pe,
-                        "strategy": "CONFLUENCE"
+                        "strategy": "CONFLUENCE_5M"
                     })
                     send_telegram(make_signal_message("PUT", name, spot, pivot_s1, current_ema9, current_ema21, current_rsi, current_adx, atm_pe, itm_pe, "ENTRY CONFIRMED"))
 
             state["positions"][ticker] = pos
 
         except Exception:
-            logging.exception("Symbol error: %s", ticker)
+            logging.exception("Error on %s", ticker)
 
-    # 30-Minute Market Pulse
+    # 15-MINUTE MARKET PULSE (With RVOL Volume Highlighting)
     if is_pulse_cycle and rankings:
         bullish = sorted(rankings, key=lambda item: item["pct"], reverse=True)[:5]
         bearish = sorted(rankings, key=lambda item: item["pct"])[:5]
+        high_volume = [x for x in rankings if x["rvol"] >= 2.0]
+        high_volume = sorted(high_volume, key=lambda item: item["rvol"], reverse=True)[:5]
+
         lines = [
-            f"⏱️ *MARKET PULSE ({current_time_str})*",
+            f"⏱️ *15M MARKET PULSE ({current_time_str})*",
             f"Symbols analyzed: {processed}", "",
             "🐂 *TOP 5 BULLISH*",
         ]
-        lines += [f"{i}. *{x['name']}* (`{x['pct']:+.2f}%`) | ₹{x['spot']:,.2f}\n   • {x['verdict']}" for i, x in enumerate(bullish, 1)]
+        lines += [f"{i}. *{x['name']}* (`{x['pct']:+.2f}%`) | RVOL: `{x['rvol']:.2f}x` | ₹{x['spot']:,.2f}\n   • {x['verdict']}" for i, x in enumerate(bullish, 1)]
         lines += ["", "🐻 *TOP 5 BEARISH*"]
-        lines += [f"{i}. *{x['name']}* (`{x['pct']:+.2f}%`) | ₹{x['spot']:,.2f}\n   • {x['verdict']}" for i, x in enumerate(bearish, 1)]
+        lines += [f"{i}. *{x['name']}* (`{x['pct']:+.2f}%`) | RVOL: `{x['rvol']:.2f}x` | ₹{x['spot']:,.2f}\n   • {x['verdict']}" for i, x in enumerate(bearish, 1)]
+
+        if high_volume:
+            lines += ["", "🔥 *HIGH VOLUME SURGES (RVOL ≥ 2.0x)*"]
+            lines += [f"• *{x['name']}*: Vol `{x['rvol']:.2f}x` avg | `{x['pct']:+.2f}%` | ₹{x['spot']:,.2f}" for x in high_volume]
+
         send_telegram("\n".join(lines))
 
     save_state(state)
+    logging.info("Cycle finished. Usable symbols: %s/%s", processed, len(symbols))
 
 def run_scanner():
     symbols = list(WATCHLIST)
     state = load_state(symbols)
     context_map = get_daily_context(symbols)
-    logging.info("Confluence Strategy online (Yahoo Engine). Exit: Supertrend (7,2) reversal only.")
+    logging.info("5-Minute Confluence Scanner Online. 15-Minute Market Pulse active. Exit: ST (7,2) only.")
     last_pulse_slot = None
 
     while True:
@@ -508,23 +511,23 @@ def run_scanner():
             logging.info("Weekend detected; stopping.")
             break
         if minute_of_day > SCAN_END_MINUTES:
-            logging.info("15:15 IST reached; stopping.")
+            logging.info("15:15 IST cutoff reached; stopping.")
             break
 
         if minute_of_day >= SCAN_START_MINUTES:
-            pulse_slot = (now.hour, now.minute)
-            is_pulse = now.minute in PULSE_MINUTES and pulse_slot != last_pulse_slot
+            pulse_slot = (now.hour, (now.minute // 15) * 15)
+            is_pulse = (now.minute in PULSE_MINUTES) and (pulse_slot != last_pulse_slot)
             if is_pulse:
                 last_pulse_slot = pulse_slot
             try:
                 run_scan_cycle(state, context_map, is_pulse, now.strftime("%I:%M %p IST"))
             except Exception:
-                logging.exception("Cycle failed.")
+                logging.exception("Scan cycle failed.")
                 save_state(state)
         else:
             logging.info("Waiting for 09:30 IST; current time %s", now.strftime("%H:%M"))
 
-        # Wait until 10s past next 5m candle boundary
+        # Align scan executions to 5-minute candle marks + 10s grace
         curr_sec = dt.datetime.now(IST).minute * 60 + dt.datetime.now(IST).second
         next_boundary = ((curr_sec // 300) + 1) * 300 + 10
         sleep_duration = max(next_boundary - curr_sec, 15)
@@ -569,9 +572,8 @@ def generate_daily_report():
     win_rate = (wins / len(trades) * 100) if trades else 0
 
     lines = [
-        f"📊 *DAILY INTRADAY REPORT | {today_label}*",
+        f"📊 *DAILY INTRADAY REPORT (5M) | {today_label}*",
         "════════════════════════════",
-        f"📘 *[STRATEGY: CONFLUENCE]*",
         f"• Trades: `{len(trades)}` (✅ {wins} | ❌ {losses})",
         f"• Win Rate: `{win_rate:.1f}%`",
         f"• Net P&L: *{total_pnl:+.2f} pts*",
@@ -586,10 +588,10 @@ def generate_daily_report():
     send_telegram("\n".join(lines))
 
 def main():
-    parser = argparse.ArgumentParser(description="Confluence Telegram Alert Scanner")
+    parser = argparse.ArgumentParser(description="5M Confluence Telegram Scanner")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--scan", action="store_true", help="Run the intraday alert scanner")
-    group.add_argument("--report", action="store_true", help="Send today's alert report")
+    group.add_argument("--scan", action="store_true", help="Run intraday scanner")
+    group.add_argument("--report", action="store_true", help="Send daily report")
     args = parser.parse_args()
     if args.report:
         generate_daily_report()
