@@ -14,7 +14,7 @@ on:
       scan_mode:
         description: 'Scan Mode to execute'
         required: true
-        default: 'LIVE'
+        default: 'WATCHLIST'
         type: choice
         options:
           - LIVE
@@ -28,10 +28,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: setup-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install Dependencies
         run: |
@@ -40,8 +39,6 @@ jobs:
 
       - name: Execute Scanner
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SCAN_MODE: >-
             ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.scan_mode || 
                (github.event.schedule == '15 10 * * 1-5' && 'WATCHLIST' || 'LIVE') }}
