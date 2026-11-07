@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 from datetime import datetime
 import pytz
@@ -14,37 +13,41 @@ TELEGRAM_RECIPIENTS = [
     ("8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms", "8865083462"),
 ]
 
-# Mode: 'LIVE' (5-minute scans) or 'WATCHLIST' (post-market narrow CPR)
+# Mode: 'LIVE' (5-minute scan) or 'WATCHLIST' (post-market narrow CPR scan)
 SCAN_MODE = os.getenv("SCAN_MODE", "LIVE").upper()
 
 # ==========================================
-# 2. YOUR 4 CHARTINK SCANNERS
+# 2. EXACT FORMULAS FOR YOUR 4 SCANNERS
 # ==========================================
 SCANNERS = {
     "LIVE_CE": {
         "title": "🟢 CE 5-Min Live Breakout",
         "url": "https://chartink.com/screener/ce-scanner-934",
-        "mode": "LIVE"
+        "mode": "LIVE",
+        "clause": "( {futures} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [ -1 ] 5 minute high ) )"
     },
     "LIVE_PE": {
         "title": "🔴 PE 5-Min Live Breakdown",
         "url": "https://chartink.com/screener/pe-scanner-929",
-        "mode": "LIVE"
+        "mode": "LIVE",
+        "clause": "( {futures} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [ -1 ] 5 minute low ) )"
     },
     "WATCHLIST_CE": {
         "title": "📈 CE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/ce-tomorrow-watchlist",
-        "mode": "WATCHLIST"
+        "mode": "WATCHLIST",
+        "clause": "( {futures} ( daily close > daily ema( daily close , 20 ) and daily ema( daily close , 20 ) > daily ema( daily close , 50 ) and daily rsi( 14 ) > 55 and daily close > [ -1 ] 1 day ago high and daily volume > daily sma( daily volume , 20 ) and ( ( daily high - daily low ) / daily close * 100 ) < 1.5 and daily close > ( ( daily high + daily low + daily close ) / 3 ) ) )"
     },
     "WATCHLIST_PE": {
         "title": "📉 PE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/pe-tomorrow-watchlist",
-        "mode": "WATCHLIST"
+        "mode": "WATCHLIST",
+        "clause": "( {futures} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < [ -1 ] 1 day ago low and daily volume > daily sma( daily volume , 20 ) and ( ( daily high - daily low ) / daily close * 100 ) < 1.5 and daily close < ( ( daily high + daily low + daily close ) / 3 ) ) )"
     }
 }
 
 def broadcast_telegram(message: str):
-    """Broadcasts alert to all registered Telegram bot/chat pairs."""
+    """Sends HTML alert to both Telegram bot recipients."""
     for token, chat_id in TELEGRAM_RECIPIENTS:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
@@ -56,57 +59,42 @@ def broadcast_telegram(message: str):
         try:
             res = requests.post(url, json=payload, timeout=12)
             if not res.ok:
-                print(f"Telegram API response for {chat_id}: {res.text}")
+                print(f"Telegram error for chat {chat_id}: {res.text}")
             else:
-                print(f"Alert delivered to chat {chat_id}")
+                print(f"Delivered message to Telegram chat {chat_id}")
         except Exception as e:
             print(f"Connection failure for {chat_id}: {e}")
 
-def fetch_chartink_stocks(scanner_url: str):
-    """Extracts CSRF token, sends scan clause to Chartink process endpoint, and extracts matches."""
+def run_scanner(clause: str):
+    """Fetches session cookies, CSRF token, and posts formula to Chartink."""
     session = requests.Session()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": scanner_url
+        "Origin": "https://chartink.com",
+        "Referer": "https://chartink.com/screener/"
     }
     
     try:
-        page = session.get(scanner_url, headers=headers, timeout=20)
-        soup = BeautifulSoup(page.text, "html.parser")
-        
+        # Step 1: Grab CSRF token and session cookies
+        home_res = session.get("https://chartink.com/screener/", headers=headers, timeout=15)
+        soup = BeautifulSoup(home_res.text, "html.parser")
         csrf_meta = soup.find("meta", {"name": "csrf-token"})
         if not csrf_meta:
-            print(f"CSRF token missing on {scanner_url}")
+            print("Could not obtain CSRF token from Chartink.")
             return None
         csrf_token = csrf_meta["content"]
         
-        # Extract clause from input field, textarea, or JavaScript variable
-        scan_clause = None
-        input_elem = soup.find("input", {"id": "scan_clause"}) or soup.find("input", {"name": "scan_clause"})
-        if input_elem and input_elem.get("value"):
-            scan_clause = input_elem.get("value")
-        else:
-            match = re.search(r'scan_clause\s*[:=]\s*["\'](.*?)["\']', page.text)
-            if match:
-                scan_clause = match.group(1)
-
-        if not scan_clause:
-            print(f"Could not locate scan_clause string on {scanner_url}")
-            return None
-            
+        # Step 2: Post the scan clause directly to the backend
         process_url = "https://chartink.com/screener/process"
-        session.headers.update({
-            "X-CSRF-TOKEN": csrf_token,
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
-        })
+        headers["X-CSRF-TOKEN"] = csrf_token
+        payload = {"scan_clause": clause}
         
-        resp = session.post(process_url, data={"scan_clause": scan_clause}, timeout=20)
-        resp_data = resp.json()
-        return resp_data.get("data", [])
-        
-    except Exception as e:
-        print(f"Error executing scan for {scanner_url}: {e}")
+        resp = session.post(process_url, headers=headers, data=payload, timeout=20)
+        data = resp.json()
+        return data.get("data", [])
+    except Exception as err:
+        print(f"Error querying Chartink: {err}")
         return None
 
 def main():
@@ -119,17 +107,17 @@ def main():
     for item in active_scanners:
         title = item["title"]
         url = item["url"]
+        clause = item["clause"]
         
-        stocks = fetch_chartink_stocks(url)
+        print(f"Evaluating {title}...")
+        stocks = run_scanner(clause)
         
         if stocks is None:
-            # Diagnostics if Chartink blocked or changed clause
-            print(f"Could not retrieve data for {title}.")
             continue
             
         if len(stocks) == 0:
-            print(f"0 stocks matched {title}.")
-            # Send a confirmation ping when triggered manually so you know the bot is alive
+            print(f"0 stocks matched for {title}.")
+            # Send test ping only if run manually from GitHub Actions UI
             if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                 broadcast_telegram(
                     f"🔍 <b>{title}</b>\n"
@@ -141,7 +129,6 @@ def main():
                 )
             continue
             
-        # Format matching stocks with Zerodha links
         stock_lines = []
         for stock in stocks[:15]:
             symbol = stock.get("nsecode")
