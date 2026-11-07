@@ -1,92 +1,48 @@
-name: 5M Telegram Alert Scanner & Pulse
+name: Chartink Options Automation
 
 on:
   schedule:
-    # 09:25 AM IST (03:55 AM UTC), Mon-Fri - Live Scanner
-    - cron: '55 3 * * 1-5'
-    # 05:05 PM IST (11:35 AM UTC), Mon-Fri - Daily Summary Report
-    - cron: '35 11 * * 1-5'
+    # 9:15 AM - 3:30 PM IST (03:45 - 10:00 UTC) Mon-Fri (Every 15 mins)
+    - cron: '45/15 3-9 * * 1-5'
+    - cron: '0 10 * * 1-5'
+    
+    # Daily Watchlist at 3:45 PM IST (10:15 UTC) Mon-Fri
+    - cron: '15 10 * * 1-5'
+    
   workflow_dispatch:
     inputs:
-      action:
-        description: 'Choose execution action'
+      scan_mode:
+        description: 'Scan Mode to execute'
         required: true
-        default: 'scan'
+        default: 'LIVE'
         type: choice
         options:
-          - scan
-          - report
-
-permissions:
-  contents: write
-
-concurrency:
-  group: nse-scanner-${{ github.ref }}
-  cancel-in-progress: false
+          - LIVE
+          - WATCHLIST
 
 jobs:
-  run-live-scanner:
-    if: github.event.schedule == '55 3 * * 1-5' || (github.event_name == 'workflow_dispatch' && inputs.action == 'scan')
+  run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install yfinance pandas numpy pytz requests
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run Master Alert Scanner
-        run: python bot.py --scan
-
-      - name: Commit & Push Trailing State
-        if: always()
+      - name: Execute Scanner
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ ! -f trade_state_master.json ]; then
-            echo "No state file produced."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin "${GITHUB_REF_NAME}" || true
-          git add trade_state_master.json
-          if git diff --cached --quiet; then
-            echo "No state changes to commit."
-            exit 0
-          fi
-          git commit -m "Update intraday trading state [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}" || true
-
-  send-daily-report:
-    if: github.event.schedule == '35 11 * * 1-5' || (github.event_name == 'workflow_dispatch' && inputs.action == 'report')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install yfinance pandas numpy pytz requests
-
-      - name: Generate & Dispatch 5 PM PnL Report
-        run: python bot.py --report
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SCAN_MODE: >-
+            ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.scan_mode || 
+               (github.event.schedule == '15 10 * * 1-5' && 'WATCHLIST' || 'LIVE') }}
+        run: python bot.py
