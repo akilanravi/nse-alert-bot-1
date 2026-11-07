@@ -2,29 +2,30 @@ name: Chartink Options Automation
 
 on:
   schedule:
-    # 9:15 AM - 3:30 PM IST (03:45 - 10:00 UTC) Mon-Fri (Every 15 mins)
-    - cron: '45/15 3-9 * * 1-5'
-    - cron: '0 10 * * 1-5'
+    # 1. LIVE SCANS: Every 5 minutes from 9:15 AM to 3:30 PM IST (03:45 to 10:00 UTC) Mon-Fri
+    - cron: '*/5 4-9 * * 1-5'
+    - cron: '45,50,55 3 * * 1-5'
+    - cron: '0,5,10,15,20,25,30 10 * * 1-5'
     
-    # Daily Watchlist at 3:45 PM IST (10:15 UTC) Mon-Fri
-    - cron: '15 10 * * 1-5'
-    
+    # 2. WATCHLIST SCANS: At 5:15 PM IST (11:45 UTC) Mon-Fri (After 5 PM IST)
+    - cron: '45 11 * * 1-5'
+
   workflow_dispatch:
     inputs:
       scan_mode:
-        description: 'Scan Mode to execute'
+        description: 'Select scan mode to test'
         required: true
         default: 'WATCHLIST'
         type: choice
         options:
-          - LIVE
           - WATCHLIST
+          - LIVE
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -37,9 +38,10 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Execute Scanner
+      - name: Run Chartink Scanner
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           SCAN_MODE: >-
             ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.scan_mode || 
-               (github.event.schedule == '15 10 * * 1-5' && 'WATCHLIST' || 'LIVE') }}
+               (github.event.schedule == '45 11 * * 1-5' && 'WATCHLIST' || 'LIVE') }}
         run: python bot.py
