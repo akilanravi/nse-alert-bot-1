@@ -7,19 +7,18 @@ import requests
 from bs4 import BeautifulSoup
 
 # ==========================================
-# 1. TELEGRAM RECIPIENTS CONFIGURATION
-# (bot_token, chat_id)
+# 1. TELEGRAM RECIPIENTS
 # ==========================================
 TELEGRAM_RECIPIENTS = [
     ("8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k", "846124589"),
     ("8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms", "8865083462"),
 ]
 
-# Execution mode: 'LIVE' (5-minute scans) or 'WATCHLIST' (daily narrow CPR scans)
+# Mode: 'LIVE' (5-minute scans) or 'WATCHLIST' (post-market narrow CPR)
 SCAN_MODE = os.getenv("SCAN_MODE", "LIVE").upper()
 
 # ==========================================
-# 2. CHARTINK SCANNERS
+# 2. YOUR 4 CHARTINK SCANNERS
 # ==========================================
 SCANNERS = {
     "LIVE_CE": {
@@ -44,110 +43,112 @@ SCANNERS = {
     }
 }
 
-# ==========================================
-# 3. HELPER FUNCTIONS
-# ==========================================
-def broadcast_telegram_alert(message: str):
-    """Sends HTML formatted message to all configured bots and chats."""
+def broadcast_telegram(message: str):
+    """Broadcasts alert to all registered Telegram bot/chat pairs."""
     for token, chat_id in TELEGRAM_RECIPIENTS:
-        if not token or not chat_id:
-            continue
-            
-        api_url = f"https://api.telegram.org/bot{token}/sendMessage"
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
             "chat_id": chat_id,
             "text": message,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
-        
         try:
-            res = requests.post(api_url, json=payload, timeout=15)
-            res.raise_for_status()
-            print(f"Message sent to chat {chat_id}")
+            res = requests.post(url, json=payload, timeout=12)
+            if not res.ok:
+                print(f"Telegram API response for {chat_id}: {res.text}")
+            else:
+                print(f"Alert delivered to chat {chat_id}")
         except Exception as e:
-            print(f"Failed delivering to chat {chat_id} via token {token[:10]}...: {e}")
+            print(f"Connection failure for {chat_id}: {e}")
 
-def fetch_chartink_data(scanner_url: str):
-    """Fetches real-time scan results from Chartink backend API."""
+def fetch_chartink_stocks(scanner_url: str):
+    """Extracts CSRF token, sends scan clause to Chartink process endpoint, and extracts matches."""
     session = requests.Session()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "X-Requested-With": "XMLHttpRequest"
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": scanner_url
     }
     
     try:
-        # Step 1: Extract CSRF token and scan clause from page HTML
-        res = session.get(scanner_url, headers=headers, timeout=20)
-        res.raise_for_status()
+        page = session.get(scanner_url, headers=headers, timeout=20)
+        soup = BeautifulSoup(page.text, "html.parser")
         
-        soup = BeautifulSoup(res.text, "html.parser")
         csrf_meta = soup.find("meta", {"name": "csrf-token"})
         if not csrf_meta:
-            print(f"Missing CSRF token on {scanner_url}")
-            return []
+            print(f"CSRF token missing on {scanner_url}")
+            return None
         csrf_token = csrf_meta["content"]
         
+        # Extract clause from input field, textarea, or JavaScript variable
         scan_clause = None
         input_elem = soup.find("input", {"id": "scan_clause"}) or soup.find("input", {"name": "scan_clause"})
-        if input_elem:
+        if input_elem and input_elem.get("value"):
             scan_clause = input_elem.get("value")
         else:
-            match = re.search(r'name=["\']scan_clause["\']\s+value=["\'](.*?)["\']', res.text)
+            match = re.search(r'scan_clause\s*[:=]\s*["\'](.*?)["\']', page.text)
             if match:
                 scan_clause = match.group(1)
-            else:
-                match_js = re.search(r'scan_clause\s*=\s*["\'](.*?)["\']', res.text)
-                if match_js:
-                    scan_clause = match_js.group(1)
 
         if not scan_clause:
-            print(f"Could not parse scan clause from {scanner_url}")
-            return []
+            print(f"Could not locate scan_clause string on {scanner_url}")
+            return None
             
-        # Step 2: Query Chartink backend process endpoint
         process_url = "https://chartink.com/screener/process"
-        headers["X-CSRF-TOKEN"] = csrf_token
-        payload = {"scan_clause": scan_clause}
+        session.headers.update({
+            "X-CSRF-TOKEN": csrf_token,
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        })
         
-        post_res = session.post(process_url, headers=headers, data=payload, timeout=20)
-        post_res.raise_for_status()
-        json_data = post_res.json()
+        resp = session.post(process_url, data={"scan_clause": scan_clause}, timeout=20)
+        resp_data = resp.json()
+        return resp_data.get("data", [])
         
-        return json_data.get("data", [])
-        
-    except Exception as err:
-        print(f"Error fetching data from {scanner_url}: {err}")
-        return []
+    except Exception as e:
+        print(f"Error executing scan for {scanner_url}: {e}")
+        return None
 
 def main():
     ist_tz = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.now(ist_tz).strftime("%d-%b-%Y %I:%M %p IST")
     
-    selected_scanners = [s for s in SCANNERS.values() if s["mode"] == SCAN_MODE]
+    active_scanners = [s for s in SCANNERS.values() if s["mode"] == SCAN_MODE]
+    print(f"--- Running {SCAN_MODE} Scanners at {now_ist} ---")
     
-    for item in selected_scanners:
+    for item in active_scanners:
         title = item["title"]
         url = item["url"]
         
-        print(f"Processing scan: {title}")
-        results = fetch_chartink_data(url)
+        stocks = fetch_chartink_stocks(url)
         
-        if not results:
-            print(f"No qualifying stocks found for {title}.")
+        if stocks is None:
+            # Diagnostics if Chartink blocked or changed clause
+            print(f"Could not retrieve data for {title}.")
             continue
             
+        if len(stocks) == 0:
+            print(f"0 stocks matched {title}.")
+            # Send a confirmation ping when triggered manually so you know the bot is alive
+            if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
+                broadcast_telegram(
+                    f"🔍 <b>{title}</b>\n"
+                    f"🕒 <i>{now_ist}</i>\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"• <i>No qualifying stocks at this moment.</i>\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔗 <a href='{url}'>Open on Chartink</a>"
+                )
+            continue
+            
+        # Format matching stocks with Zerodha links
         stock_lines = []
-        for stock in results[:15]:
+        for stock in stocks[:15]:
             symbol = stock.get("nsecode")
             close_price = stock.get("close", "N/A")
             pct_change = stock.get("per_chg", 0.0)
-            
-            # Interactive link directly opens the 5-minute chart in Zerodha Kite
             kite_url = f"https://kite.zerodha.com/chart/ext/tvc/NSE/{symbol}"
-            stock_lines.append(
-                f"• <b><a href='{kite_url}'>{symbol}</a></b>: ₹{close_price} ({pct_change:+.2f}%)"
-            )
+            stock_lines.append(f"• <b><a href='{kite_url}'>{symbol}</a></b>: ₹{close_price} ({pct_change:+.2f}%)")
             
         msg = (
             f"<b>{title}</b>\n"
@@ -157,9 +158,7 @@ def main():
             f"\n━━━━━━━━━━━━━━━━━━━\n"
             f"🔗 <a href='{url}'>Open on Chartink</a>"
         )
-        
-        broadcast_telegram_alert(msg)
-        print(f"Broadcast completed for {title} ({len(results)} matches).")
+        broadcast_telegram(msg)
 
 if __name__ == "__main__":
     main()
