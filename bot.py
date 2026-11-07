@@ -1,5 +1,6 @@
 import os
 import sys
+import urllib.parse
 from datetime import datetime
 import pytz
 import requests
@@ -17,9 +18,10 @@ TELEGRAM_RECIPIENTS = [
 SCAN_MODE = os.getenv("SCAN_MODE", "WATCHLIST").upper()
 
 # ==========================================
-# 2. EXACT VERIFIED SCAN CLAUSES
+# 2. VERIFIED SCAN CLAUSES (STOCKS & INDICES)
 # ==========================================
 SCANNERS = {
+    # --- POST-MARKET WATCHLISTS (STOCKS) ---
     "WATCHLIST_CE": {
         "title": "📈 CE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/ce-tomorrow-watchlist",
@@ -32,17 +34,33 @@ SCANNERS = {
         "mode": "WATCHLIST",
         "clause": "( {33489} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < 1 day ago low and daily volume > daily sma( daily volume , 20 ) and daily close < ( daily high + daily low + daily close ) / 3 and daily high - daily low / daily close * 100 < 1.5 ) )"
     },
+
+    # --- 5-MIN LIVE BREAKOUTS (F&O STOCKS) ---
     "LIVE_CE": {
-        "title": "🟢 CE 5-Min Live Breakout",
+        "title": "🟢 CE 5-Min Stock Breakout",
         "url": "https://chartink.com/screener/ce-scanner-934",
         "mode": "LIVE",
         "clause": "( {33489} ( ( {33489} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
     },
     "LIVE_PE": {
-        "title": "🔴 PE 5-Min Live Breakdown",
+        "title": "🔴 PE 5-Min Stock Breakdown",
         "url": "https://chartink.com/screener/pe-scanner-929",
         "mode": "LIVE",
         "clause": "( {33489} ( ( {33489} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) ) ) )"
+    },
+
+    # --- 5-MIN LIVE INDEX BREAKOUTS (NIFTY / BANK NIFTY) ---
+    "INDEX_LIVE_CE": {
+        "title": "⚡ INDEX 5-Min CE Breakout",
+        "url": "https://chartink.com/screener/",
+        "mode": "LIVE",
+        "clause": "( {1468504} ( ( {1468504} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
+    },
+    "INDEX_LIVE_PE": {
+        "title": "⚡ INDEX 5-Min PE Breakdown",
+        "url": "https://chartink.com/screener/",
+        "mode": "LIVE",
+        "clause": "( {1468504} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) )"
     }
 }
 
@@ -95,6 +113,11 @@ def run_scanner(clause: str):
         print(f"Error querying Chartink: {err}")
         return None
 
+def build_kite_url(symbol: str) -> str:
+    """Formats Zerodha Kite chart redirection links for stocks and major indices."""
+    encoded_sym = urllib.parse.quote(symbol)
+    return f"https://kite.zerodha.com/chart/ext/tvc/NSE/{encoded_sym}"
+
 def main():
     ist_tz = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.now(ist_tz).strftime("%d-%b-%Y %I:%M %p IST")
@@ -114,14 +137,14 @@ def main():
             continue
             
         if len(stocks) == 0:
-            print(f"0 stocks matched for {title}.")
-            # Send status ping on manual run from GitHub Actions UI
+            print(f"0 results for {title}.")
+            # Send status heartbeat on manual trigger from GitHub Actions UI
             if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                 broadcast_telegram(
                     f"🔍 <b>{title}</b>\n"
                     f"🕒 <i>{now_ist}</i>\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
-                    f"• <i>No qualifying stocks at this moment.</i>\n"
+                    f"• <i>No qualifying items at this moment.</i>\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
                     f"🔗 <a href='{url}'>Open on Chartink</a>"
                 )
@@ -132,7 +155,7 @@ def main():
             symbol = stock.get("nsecode")
             close_price = stock.get("close", "N/A")
             pct_change = stock.get("per_chg", 0.0)
-            kite_url = f"https://kite.zerodha.com/chart/ext/tvc/NSE/{symbol}"
+            kite_url = build_kite_url(symbol)
             stock_lines.append(f"• <b><a href='{kite_url}'>{symbol}</a></b>: ₹{close_price} ({pct_change:+.2f}%)")
             
         msg = (
@@ -147,4 +170,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
