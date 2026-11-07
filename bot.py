@@ -18,7 +18,7 @@ TELEGRAM_RECIPIENTS = [
 SCAN_MODE = os.getenv("SCAN_MODE", "WATCHLIST").upper()
 
 # ==========================================
-# 2. VERIFIED SCAN CLAUSES (STOCKS & INDICES)
+# 2. VERIFIED SCAN CLAUSES WITH RSI BOUNDS
 # ==========================================
 SCANNERS = {
     # --- POST-MARKET WATCHLISTS (STOCKS) ---
@@ -35,32 +35,32 @@ SCANNERS = {
         "clause": "( {33489} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < 1 day ago low and daily volume > daily sma( daily volume , 20 ) and daily close < ( daily high + daily low + daily close ) / 3 and daily high - daily low / daily close * 100 < 1.5 ) )"
     },
 
-    # --- 5-MIN LIVE BREAKOUTS (F&O STOCKS) ---
+    # --- 5-MIN LIVE BREAKOUTS (F&O STOCKS WITH RSI 50-70 / 30-50 BOUNDS) ---
     "LIVE_CE": {
         "title": "🟢 CE 5-Min Stock Breakout",
         "url": "https://chartink.com/screener/ce-scanner-934",
         "mode": "LIVE",
-        "clause": "( {33489} ( ( {33489} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
+        "clause": "( {33489} ( ( {33489} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute rsi( 14 ) < 70 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
     },
     "LIVE_PE": {
         "title": "🔴 PE 5-Min Stock Breakdown",
         "url": "https://chartink.com/screener/pe-scanner-929",
         "mode": "LIVE",
-        "clause": "( {33489} ( ( {33489} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) ) ) )"
+        "clause": "( {33489} ( ( {33489} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute rsi( 14 ) > 30 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) ) ) )"
     },
 
-    # --- 5-MIN LIVE INDEX BREAKOUTS (NIFTY / BANK NIFTY) ---
+    # --- 5-MIN LIVE INDEX BREAKOUTS (NIFTY / BANK NIFTY WITH RSI BOUNDS) ---
     "INDEX_LIVE_CE": {
         "title": "⚡ INDEX 5-Min CE Breakout",
         "url": "https://chartink.com/screener/",
         "mode": "LIVE",
-        "clause": "( {1468504} ( ( {1468504} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
+        "clause": "( {1468504} ( ( {1468504} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute rsi( 14 ) < 70 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
     },
     "INDEX_LIVE_PE": {
         "title": "⚡ INDEX 5-Min PE Breakdown",
         "url": "https://chartink.com/screener/",
         "mode": "LIVE",
-        "clause": "( {1468504} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) )"
+        "clause": "( {1468504} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute rsi( 14 ) > 30 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) )"
     }
 }
 
@@ -138,7 +138,6 @@ def main():
             
         if len(stocks) == 0:
             print(f"0 results for {title}.")
-            # Send status heartbeat on manual trigger from GitHub Actions UI
             if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                 broadcast_telegram(
                     f"🔍 <b>{title}</b>\n"
