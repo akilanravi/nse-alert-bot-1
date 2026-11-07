@@ -13,41 +13,41 @@ TELEGRAM_RECIPIENTS = [
     ("8764996383:AAE_vevTjJ76zfK3g3rYGgsZB3_EtkbvUms", "8865083462"),
 ]
 
-# Mode: 'LIVE' (5-minute scan) or 'WATCHLIST' (post-market narrow CPR scan)
-SCAN_MODE = os.getenv("SCAN_MODE", "LIVE").upper()
+# Mode: 'LIVE' or 'WATCHLIST'
+SCAN_MODE = os.getenv("SCAN_MODE", "WATCHLIST").upper()
 
 # ==========================================
-# 2. EXACT FORMULAS FOR YOUR 4 SCANNERS
+# 2. YOUR 4 SCANNERS (SYNTAX CORRECTED)
 # ==========================================
 SCANNERS = {
     "LIVE_CE": {
         "title": "🟢 CE 5-Min Live Breakout",
         "url": "https://chartink.com/screener/ce-scanner-934",
         "mode": "LIVE",
-        "clause": "( {futures} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [ -1 ] 5 minute high ) )"
+        "clause": "( {futures} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > 1 candle ago 5 minute high ) )"
     },
     "LIVE_PE": {
         "title": "🔴 PE 5-Min Live Breakdown",
         "url": "https://chartink.com/screener/pe-scanner-929",
         "mode": "LIVE",
-        "clause": "( {futures} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [ -1 ] 5 minute low ) )"
+        "clause": "( {futures} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < 1 candle ago 5 minute low ) )"
     },
     "WATCHLIST_CE": {
         "title": "📈 CE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/ce-tomorrow-watchlist",
         "mode": "WATCHLIST",
-        "clause": "( {futures} ( daily close > daily ema( daily close , 20 ) and daily ema( daily close , 20 ) > daily ema( daily close , 50 ) and daily rsi( 14 ) > 55 and daily close > [ -1 ] 1 day ago high and daily volume > daily sma( daily volume , 20 ) and ( ( daily high - daily low ) / daily close * 100 ) < 1.5 and daily close > ( ( daily high + daily low + daily close ) / 3 ) ) )"
+        "clause": "( {futures} ( daily close > daily ema( daily close , 20 ) and daily ema( daily close , 20 ) > daily ema( daily close , 50 ) and daily rsi( 14 ) > 55 and daily close > 1 day ago high and daily volume > daily sma( daily volume , 20 ) and ( daily high - daily low ) / daily close * 100 < 1.5 and daily close > ( daily high + daily low + daily close ) / 3 ) )"
     },
     "WATCHLIST_PE": {
         "title": "📉 PE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/pe-tomorrow-watchlist",
         "mode": "WATCHLIST",
-        "clause": "( {futures} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < [ -1 ] 1 day ago low and daily volume > daily sma( daily volume , 20 ) and ( ( daily high - daily low ) / daily close * 100 ) < 1.5 and daily close < ( ( daily high + daily low + daily close ) / 3 ) ) )"
+        "clause": "( {futures} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < 1 day ago low and daily volume > daily sma( daily volume , 20 ) and ( daily high - daily low ) / daily close * 100 < 1.5 and daily close < ( daily high + daily low + daily close ) / 3 ) )"
     }
 }
 
 def broadcast_telegram(message: str):
-    """Sends HTML alert to both Telegram bot recipients."""
+    """Sends HTML alert to all registered Telegram bot recipients."""
     for token, chat_id in TELEGRAM_RECIPIENTS:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
@@ -66,7 +66,7 @@ def broadcast_telegram(message: str):
             print(f"Connection failure for {chat_id}: {e}")
 
 def run_scanner(clause: str):
-    """Fetches session cookies, CSRF token, and posts formula to Chartink."""
+    """Obtains fresh CSRF session token and posts clause to Chartink backend."""
     session = requests.Session()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -76,7 +76,6 @@ def run_scanner(clause: str):
     }
     
     try:
-        # Step 1: Grab CSRF token and session cookies
         home_res = session.get("https://chartink.com/screener/", headers=headers, timeout=15)
         soup = BeautifulSoup(home_res.text, "html.parser")
         csrf_meta = soup.find("meta", {"name": "csrf-token"})
@@ -85,7 +84,6 @@ def run_scanner(clause: str):
             return None
         csrf_token = csrf_meta["content"]
         
-        # Step 2: Post the scan clause directly to the backend
         process_url = "https://chartink.com/screener/process"
         headers["X-CSRF-TOKEN"] = csrf_token
         payload = {"scan_clause": clause}
@@ -117,7 +115,6 @@ def main():
             
         if len(stocks) == 0:
             print(f"0 stocks matched for {title}.")
-            # Send test ping only if run manually from GitHub Actions UI
             if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                 broadcast_telegram(
                     f"🔍 <b>{title}</b>\n"
