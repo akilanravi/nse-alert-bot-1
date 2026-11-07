@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # ==========================================
-# 1. TELEGRAM RECIPIENTS
+# 1. TELEGRAM RECIPIENTS (bot_token, chat_id)
 # ==========================================
 TELEGRAM_RECIPIENTS = [
     ("8721771664:AAFcyCX2TP2KsUrIQoh6utZvHjbLQt8vD-k", "846124589"),
@@ -17,37 +17,37 @@ TELEGRAM_RECIPIENTS = [
 SCAN_MODE = os.getenv("SCAN_MODE", "WATCHLIST").upper()
 
 # ==========================================
-# 2. YOUR 4 SCANNERS (SYNTAX CORRECTED)
+# 2. EXACT VERIFIED SCAN CLAUSES
 # ==========================================
 SCANNERS = {
-    "LIVE_CE": {
-        "title": "🟢 CE 5-Min Live Breakout",
-        "url": "https://chartink.com/screener/ce-scanner-934",
-        "mode": "LIVE",
-        "clause": "( {futures} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > 1 candle ago 5 minute high ) )"
-    },
-    "LIVE_PE": {
-        "title": "🔴 PE 5-Min Live Breakdown",
-        "url": "https://chartink.com/screener/pe-scanner-929",
-        "mode": "LIVE",
-        "clause": "( {futures} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > ( [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 ) and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < 1 candle ago 5 minute low ) )"
-    },
     "WATCHLIST_CE": {
         "title": "📈 CE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/ce-tomorrow-watchlist",
         "mode": "WATCHLIST",
-        "clause": "( {futures} ( daily close > daily ema( daily close , 20 ) and daily ema( daily close , 20 ) > daily ema( daily close , 50 ) and daily rsi( 14 ) > 55 and daily close > 1 day ago high and daily volume > daily sma( daily volume , 20 ) and ( daily high - daily low ) / daily close * 100 < 1.5 and daily close > ( daily high + daily low + daily close ) / 3 ) )"
+        "clause": "( {33489} ( ( {33489} ( daily close > daily ema( daily close , 20 ) and daily ema( daily close , 20 ) > daily ema( daily close , 50 ) and daily rsi( 14 ) > 55 and daily close > 1 day ago high and daily volume > daily sma( daily volume , 20 ) and daily high - daily low / daily close * 100 < 1.5 and daily close > ( daily high + daily low + daily close ) / 3 ) ) ) )"
     },
     "WATCHLIST_PE": {
         "title": "📉 PE Tomorrow Watchlist (Narrow CPR)",
         "url": "https://chartink.com/screener/pe-tomorrow-watchlist",
         "mode": "WATCHLIST",
-        "clause": "( {futures} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < 1 day ago low and daily volume > daily sma( daily volume , 20 ) and ( daily high - daily low ) / daily close * 100 < 1.5 and daily close < ( daily high + daily low + daily close ) / 3 ) )"
+        "clause": "( {33489} ( daily close < daily ema( daily close , 20 ) and daily ema( daily close , 20 ) < daily ema( daily close , 50 ) and daily rsi( 14 ) < 45 and daily close < 1 day ago low and daily volume > daily sma( daily volume , 20 ) and daily close < ( daily high + daily low + daily close ) / 3 and daily high - daily low / daily close * 100 < 1.5 ) )"
+    },
+    "LIVE_CE": {
+        "title": "🟢 CE 5-Min Live Breakout",
+        "url": "https://chartink.com/screener/ce-scanner-934",
+        "mode": "LIVE",
+        "clause": "( {33489} ( ( {33489} ( [0] 5 minute close > [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) > [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close > [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) > 50 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close > [0] 5 minute open and [0] 5 minute close > [-1] 5 minute high ) ) ) )"
+    },
+    "LIVE_PE": {
+        "title": "🔴 PE 5-Min Live Breakdown",
+        "url": "https://chartink.com/screener/pe-scanner-929",
+        "mode": "LIVE",
+        "clause": "( {33489} ( ( {33489} ( [0] 5 minute close < [0] 5 minute vwap and [0] 5 minute ema( [0] 5 minute close , 9 ) < [0] 5 minute ema( [0] 5 minute close , 21 ) and [0] 5 minute close < [0] 5 minute supertrend( 10 , 2 ) and [0] 5 minute rsi( 14 ) < 50 and [0] 5 minute volume > [0] 5 minute sma( [0] 5 minute volume , 20 ) * 1.5 and [0] 5 minute close < [0] 5 minute open and [0] 5 minute close < [-1] 5 minute low ) ) ) )"
     }
 }
 
 def broadcast_telegram(message: str):
-    """Sends HTML alert to all registered Telegram bot recipients."""
+    """Sends HTML alert to both Telegram bot recipients."""
     for token, chat_id in TELEGRAM_RECIPIENTS:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
@@ -58,15 +58,15 @@ def broadcast_telegram(message: str):
         }
         try:
             res = requests.post(url, json=payload, timeout=12)
-            if not res.ok:
-                print(f"Telegram error for chat {chat_id}: {res.text}")
+            if res.ok:
+                print(f"Message delivered to {chat_id}")
             else:
-                print(f"Delivered message to Telegram chat {chat_id}")
+                print(f"Telegram error for {chat_id}: {res.text}")
         except Exception as e:
             print(f"Connection failure for {chat_id}: {e}")
 
 def run_scanner(clause: str):
-    """Obtains fresh CSRF session token and posts clause to Chartink backend."""
+    """Fetches session CSRF token and executes scan against Chartink process API."""
     session = requests.Session()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -107,7 +107,7 @@ def main():
         url = item["url"]
         clause = item["clause"]
         
-        print(f"Evaluating {title}...")
+        print(f"Executing: {title}")
         stocks = run_scanner(clause)
         
         if stocks is None:
@@ -115,6 +115,7 @@ def main():
             
         if len(stocks) == 0:
             print(f"0 stocks matched for {title}.")
+            # Send status ping on manual run from GitHub Actions UI
             if os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
                 broadcast_telegram(
                     f"🔍 <b>{title}</b>\n"
@@ -146,3 +147,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
